@@ -19,6 +19,11 @@ export function createDino(state: GameState, kind: string, team: Team, x: number
     alive: true,
     hitFlash: 0,
     meleeCooldown: 0,
+    abilityCooldown: 0,
+    abilityT: -1,
+    abilityFrom: { x, y },
+    abilityTo: { x, y },
+    abilityHit: [],
     lastAttacker: null,
     sinceHit: 999,
     damageMul: 1,
@@ -96,4 +101,9 @@ export function isFree(world: World, x: number, y: number, r: number): boolean {
     }
   });
   return free;
+}
+
+/** True while a dino is in the air (mid-leap): it passes over rocks and other dinos. */
+export function isAirborne(d: Dino): boolean {
+  return d.abilityT >= 0 && getDino(d.kind).ability?.kind === 'leap';
 }

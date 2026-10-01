@@ -55,6 +55,7 @@ export function parseClientMsg(raw: string): ClientMsg | null {
         turn: clamp(tu, -1, 1),
         aimWorld: { x: clamp(ax, -1e5, 1e5), y: clamp(ay, -1e5, 1e5) },
         fire: o.f === 1 || o.f === true,
+        ability: o.ab === 1 || o.ab === true,
       },
     };
   }
@@ -62,7 +63,7 @@ export function parseClientMsg(raw: string): ClientMsg | null {
 }
 
 export function encodeInput(seq: number, c: InputCommand): string {
-  return JSON.stringify({ t: 'input', seq, th: c.throttle, tu: c.turn, ax: Math.round(c.aimWorld.x), ay: Math.round(c.aimWorld.y), f: c.fire ? 1 : 0 });
+  return JSON.stringify({ t: 'input', seq, th: c.throttle, tu: c.turn, ax: Math.round(c.aimWorld.x), ay: Math.round(c.aimWorld.y), f: c.fire ? 1 : 0, ab: c.ability ? 1 : 0 });
 }
 
 // ---------------------------------------------------------------- server -> client
@@ -135,6 +136,10 @@ export type DinoTuple = [
   /** bit 0: hit flash, bit 1: eating */
   flags: number,
   stride: number,
+  /** Progress of the running ability, 1..1000 (0 when none is running). */
+  abilityPhase: number,
+  /** Ability cooldown in 1/10 s. */
+  abilityCd: number,
 ];
 
 /** A carcass as sent to clients (they appear and vanish at runtime). */
@@ -189,12 +194,23 @@ export function encodeDino(d: Dino): DinoTuple {
     d.maxHp,
     (d.hitFlash > 0 ? 1 : 0) | (d.eating ? 2 : 0),
     q(d.stride, 10),
+    abilityPhase(d),
+    Math.ceil(d.abilityCooldown * 10),
   ];
+}
+
+function abilityDuration(kind: string): number {
+  return getDino(kind).ability?.duration ?? 1;
+}
+
+function abilityPhase(d: Dino): number {
+  if (d.abilityT < 0) return 0;
+  return clamp(Math.round((d.abilityT / abilityDuration(d.kind)) * 1000), 1, 1000);
 }
 
 /** Rebuild a render-ready Dino from a tuple. Server-only fields get neutral values. */
 export function decodeDino(t: DinoTuple): Dino {
-  const [id, kind, team, playerId, x, y, heading, speed, headYaw, mounts, hp, maxHp, flags, stride] = t;
+  const [id, kind, team, playerId, x, y, heading, speed, headYaw, mounts, hp, maxHp, flags, stride, phase, abilityCd] = t;
   const d: Dino = {
     id,
     kind,
@@ -211,6 +227,11 @@ export function decodeDino(t: DinoTuple): Dino {
     alive: true,
     hitFlash: flags & 1 ? 0.1 : 0,
     meleeCooldown: 0,
+    abilityCooldown: abilityCd / 10,
+    abilityT: phase > 0 ? (phase / 1000) * abilityDuration(kind) : -1,
+    abilityFrom: { x: 0, y: 0 },
+    abilityTo: { x: 0, y: 0 },
+    abilityHit: [],
     lastAttacker: null,
     sinceHit: 999,
     damageMul: 1,

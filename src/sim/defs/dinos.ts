@@ -23,6 +23,8 @@ const DINOS: Record<string, DinoDef> = {
     turnPenaltyAtSpeed: 0.4,
     hp: 100,
     head: { offset: { x: 11, y: 0 }, maxYaw: 25 * DEG, yawSpeed: 2.8 },
+    // Right mouse: a short charge straight ahead that rams everything in the way.
+    ability: { kind: 'dash', cooldown: 15, duration: 0.4, speed: 260, damage: 20, hitReach: 4 },
     // Two cannons hang from the armored saddle, one on each flank, and fire together.
     volley: true,
     mounts: [
@@ -48,7 +50,7 @@ const DINOS: Record<string, DinoDef> = {
       },
     ],
   },
-  // Fast and nimble with a small hitbox, but its dart launcher is weak.
+  // Fast and nimble with a small hitbox, but its twin side guns are light.
   velociraptor: {
     kind: 'velociraptor',
     diet: 'carnivore',
@@ -66,15 +68,29 @@ const DINOS: Record<string, DinoDef> = {
     turnPenaltyAtSpeed: 0.2,
     hp: 60,
     head: { offset: { x: 7, y: 0 }, maxYaw: 15 * DEG, yawSpeed: 4 },
+    // Right mouse: a leap toward the cursor (over rocks too) that slams down on whoever is below.
+    ability: { kind: 'leap', cooldown: 15, duration: 0.45, minRange: 30, maxRange: 110, damage: 18, hitReach: 8 },
+    // Two small guns hang from the metal saddle, one on each flank, and fire together.
+    volley: true,
     mounts: [
       {
-        id: 'dart',
-        parent: 'head',
-        offset: { x: 2, y: 0 },
+        id: 'sideGunL',
+        parent: 'body',
+        offset: { x: 1, y: -8 },
         baseAngle: 0,
-        arcHalf: 15 * DEG,
-        turnSpeed: 4,
-        weapon: 'raptorDart',
+        arcHalf: 25 * DEG,
+        turnSpeed: 4.5,
+        weapon: 'raptorSideGun',
+        muzzle: 8,
+      },
+      {
+        id: 'sideGunR',
+        parent: 'body',
+        offset: { x: 1, y: 8 },
+        baseAngle: 0,
+        arcHalf: 25 * DEG,
+        turnSpeed: 4.5,
+        weapon: 'raptorSideGun',
         muzzle: 8,
       },
     ],

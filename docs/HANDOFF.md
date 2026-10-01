@@ -1,6 +1,6 @@
 # Dinoriders: Handoff
 
-**Status (2026-10-01, end of session):** every requested feature is implemented. All 69 tests pass, and the type-check and build are clean. Phases 0–5 are committed on `master`. Phase 5 (dino-claw cursor and armored Triceratops) has been checked in a browser, but the Docker image has **not** been rebuilt with it yet. See [Latest session](#latest-session-phase-5).
+**Status (2026-10-01, end of session):** every requested feature is implemented. All 82 tests pass, and the type-check and build are clean. Phases 0–6 are committed on `master`. Phase 6 (armored Velociraptor with twin side guns, raptor leap, triceratops dash) has been checked in a browser, and the Docker image on :8080 has been rebuilt with it. See [Latest session](#latest-session-phase-6).
 
 This document gives the state of the project, how it fits together, and what to watch out for. For how to play and run it, see [README.md](../README.md). The design history is in [docs/superpowers/specs/](superpowers/specs/).
 
@@ -24,36 +24,65 @@ A top-down pixel-art multiplayer shooter. Players ride armed dinosaurs in one pe
 | `ffc799e` | 3: melee attacks and wild dinosaurs |
 | `6c9228c` | 4: money, upgrades, base camp shop |
 | `4efb5c5` | handoff document |
-| "Phase 5" (latest) | 5: dino-claw menu cursor, armored Triceratops with twin side cannons, `?preview` art sheet |
+| "Phase 5" | 5: dino-claw menu cursor, armored Triceratops with twin side cannons, `?preview` art sheet |
+| "Phase 6" (latest) | 6: armored Velociraptor with twin side guns, right-click abilities (raptor leap, triceratops dash) |
 
-## Latest session: phase 5
-**First action next session:** run `docker compose up --build -d` so the container on :8080 runs the phase 5 code. Until then it serves the phase 4 build.
+## Latest session: phase 6
+**What was done** (based on a second Dino Riders box image the user supplied: a Deinonychus ridden by Antor):
+1. **Armored Velociraptor.**
+   - Ridden raptors wear a small riveted metal saddle with team-color trim and struts to both flanks (`drawRaptorSaddleArmor`), plus a silver face mask with a grille (`drawRaptorHeadArmor`). Wild raptors are unarmored.
+   - The head-mounted dart launcher was **removed**. A small gun (`drawRaptorSideGun`, with a red power cell) now hangs on each flank.
+   - Mounts `sideGunL` and `sideGunR`: parent `body`, offset `(1, ±8)`, `arcHalf` 25°, muzzle 8, `volley: true`.
+   - The weapon `raptorSideGun` does 3 damage every 0.26 s. Two guns give about 23 DPS, the same as the old dart.
+   - The gunmetal colors (`METAL*`, `RIVET`) are now exported from `dinoArt.ts` and shared.
+2. **Abilities on right click, with a 15 s cooldown** (`DinoDef.ability`, code in `src/sim/systems/abilities.ts`).
+   - **Velociraptor leap** (`kind: 'leap'`): it jumps toward the aim point, 30–110 px away, in 0.45 s.
+     - While airborne (`isAirborne` in `world.ts`), it skips rock push-out, dino contact and melee, both as attacker and as target. Projectiles still hit it.
+     - On landing it deals 18 damage to every hostile within its radius + their radius + 8 px.
+   - **Triceratops dash** (`kind: 'dash'`): 0.4 s at 260 px/s along its heading, which ignores steering.
+     - It deals 20 damage once to each hostile it touches in front of it (±70°) and shoves it 12 px. Dinos in their own base camp are neither hurt nor shoved.
+     - A head-on rock ends the dash early.
+   - The rider can still aim and fire during either ability.
+   - **Wild dinos** use their ability on a target they are hunting or charging, when it is in range and ahead. Each tick has a 1.5% chance, about once a second on average, and the same 15 s cooldown applies (`wantsAbility` in `ai.ts`).
+3. **Protocol.**
+   - `InputCommand.ability` (optional) is sent as `ab: 0|1`.
+   - `DinoTuple` has two new trailing fields: `abilityPhase` (0, or a progress of 1..1000) and `abilityCd` (tenths of a second).
+   - New events: `ability` (take-off dust) and `slam` (leap landing: dust ring, sparks, shake). Dash hits reuse the `melee` event.
+4. **Client.**
+   - Mid-leap, `DinoView` raises every part by up to 10 px, scales it up to 1.15× (the part offsets too) and draws it above the y-sort. The shadow stays on the ground and shrinks.
+   - Dashing dinos leave a dust trail (`GameScene`).
+   - The HUD stats show `JUMP READY`/`JUMP IN 12` (or `DASH …`). Write it as `IN 12`, because `12S` reads as `125` in the 5x7 font.
+   - The join screen and the README list the new control.
+5. **Tests.**
+   - `tests/sim/raptor.test.ts` covers the volley.
+   - `tests/sim/abilities.test.ts` covers:
+     - leap range, landing damage and friendly fire;
+     - passing over dinos;
+     - the cooldown, and base immunity;
+     - dash distance, single hit and the rock stop;
+     - wild dinos using abilities occasionally.
+   - `tests/net/protocol.test.ts` covers the new input and tuple fields round-trip.
+6. **Verification.** The art was reviewed with `?preview=velociraptor`. The game was driven with the CDP approach under Browser testing: two bolts per shot, a leap, a dash with its dust trail, and the HUD cooldown. The driver script was not committed.
 
-**What was done:**
-1. **Menu cursor bug.** `index.html` sets `canvas { cursor: none }` for the in-game reticle, so the lobby pointer was only visible over menu items.
-   - `JoinScene` now sets a pixel-art dino-claw cursor as the default, and a gold variant over menu items and the shop rows.
-   - `GameScene.create` resets it to `'none'`. Phaser's default cursor is global across scenes.
-   - The art is `drawClawCursor` in `worldArt.ts`, a hand-drawn `CLAW_MAP` scaled to 32×32. The CSS value comes from `src/client/cursor.ts` (`clawCursor(hover)`).
-2. **Armored Triceratops, based on the Dino Riders box art the user supplied** (a Triceratops with Hammerhead and Sidewinder).
-   - Ridden Triceratops wear a boxy riveted howdah with team-color trim and struts to both flanks (`drawTriceratopsSaddleArmor`).
-   - They also wear a face plate and a team-colored frill shield (`drawTriceratopsHeadArmor`).
-   - A heavy cannon hangs on each flank (`drawSideCannon`). Wild Triceratops are unarmored.
-   - The **horn cannon was removed**.
-   - The mounts are now `sideCannonL` and `sideCannonR`: parent `body`, offset `(2, ±13)`, `arcHalf` 35°, muzzle 15.
-   - The weapon `sideCannon` does 7 damage every 0.30 s, so total DPS is the same as the old gun.
-   - The new `DinoDef.volley: true` makes both cannons fire together on every trigger pull (`sim.ts`). The shots converge on the aim point.
-   - Armor is cosmetic for now: HP and the armor upgrade are unchanged.
-   - `DinoView` draws the armor overlays generically for any species that has the textures. The rider faces the mean direction of all guns.
-3. **Art preview page:** `/?preview` (`PreviewScene`) shows every team palette plus wild × 8 headings, and both claw cursors.
-   - Options: `?preview=velociraptor`, `&zoom=4&focus=row,col`.
-   - Use it to review sprite work, and take screenshots with headless Edge (see Browser testing).
-4. Tests: `tests/sim/triceratops.test.ts` checks the two converging shots from opposite flanks and the shared cooldown.
+**Balance knobs:**
+- The `ability` entries in `dinos.ts`: damage, range, speed, cooldown.
+- `ABILITY_CHANCE` and the range/arc checks in `wantsAbility` (`ai.ts`).
+- `DASH_ARC` and `DASH_KNOCKBACK` in `abilities.ts`.
 
-**Next step the user announced:** they will provide a similar box-art image for the **Velociraptor**, to model its armor and weapons the same way.
-- To do it: add `drawRaptor…Armor` functions in `raptorArt.ts` and register `velociraptor_armor_<pal>`/`velociraptor_headArmor_<pal>` for `t0`..`t3` in `textures/index.ts`. `DinoView` needs no changes.
-- Adjust `mounts` (and `volley` if it gets several guns) in `dinos.ts`.
-- `tests/sim/feeding.test.ts` asserts that the raptor's gun coverage is smaller than the Triceratops'. Keep that in mind when changing raptor arcs.
-- Process that worked well this session: plan first, with mockups for the user. Then iterate the art with `?preview` screenshots before wiring up the sim, and check in the game at the end.
+## Phase 5 (previous session)
+- **Dino-claw menu cursor.**
+  - `JoinScene` sets the default cursor; `GameScene.create` resets it to `'none'`, because the cursor is global across scenes.
+  - The art is `drawClawCursor` (`worldArt.ts`), and the CSS value comes from `src/client/cursor.ts`.
+- **Armored Triceratops** from the user's box art:
+  - a howdah (`drawTriceratopsSaddleArmor`) and head armor;
+  - two flank cannons (`sideCannonL`/`sideCannonR`, `sideCannon`: 7 damage every 0.30 s) firing as a `volley`;
+  - the horn cannon was removed;
+  - the armor is cosmetic only.
+- **Art preview page** `/?preview` (`PreviewScene`): every palette × 8 headings. Options: `?preview=velociraptor`, `&zoom=4&focus=row,col`.
+- **Process that worked well:**
+  1. Plan first.
+  2. Iterate the art with `?preview` screenshots before wiring up the sim.
+  3. Check in the game at the end.
 
 ## Architecture
 ```
@@ -81,7 +110,8 @@ tests/       vitest: sim/, net/, server/ (the server tests open real WebSockets 
 |---|---|
 | Add or tune a species | `src/sim/defs/dinos.ts`, `src/sim/defs/weapons.ts`. Sprites go in `src/client/render/textures/` and are registered in `textures/index.ts` under the keys `<kind>_body_<palette>_<pose>`, `<kind>_shadow_<pose>`, `<kind>_head_<palette>`, where palette is `t0`..`t3` or `wild`. Also add the species to the `HERBIVORES`/`CARNIVORES` lists in `ecology.ts` and to `drawCarcass` (`FoodView` falls back to Triceratops art). |
 | Give a species rider armor | Register `<kind>_armor_<palette>` (body overlay) and/or `<kind>_headArmor_<palette>` (head overlay) for `t0`..`t3` in `textures/index.ts`. `DinoView` shows them on ridden dinos whenever the textures exist. The Triceratops versions are in `dinoArt.ts`. Open `/?preview` (or `/?preview=velociraptor&zoom=3&focus=row,col`) to see every palette and heading. |
-| Fire all guns at once | `volley: true` on the `DinoDef` (used by the Triceratops' two side cannons). Without it, only the mounts that are on target fire (`selectFiringMounts`). |
+| Give a species an ability | `ability` on the `DinoDef` (`kind: 'leap' \| 'dash'`). The logic is in `src/sim/systems/abilities.ts`, wild use in `wantsAbility` (`ai.ts`), and the leap rendering in `DinoView`. A new kind needs a branch in `updateAbility`. |
+| Fire all guns at once | `volley: true` on the `DinoDef` (used by both species' twin side guns). Without it, only the mounts that are on target fire (`selectFiringMounts`). |
 | Change the diet rule | `canEat` in `src/sim/systems/feeding.ts`. Food amounts and regrowth are in the `FOOD` table in the same file. |
 | Tune weapon aim limits | `MountDef` (`baseAngle`, `arcHalf`), `HeadDef.maxYaw`. The aim maths is in `systems/aiming.ts`. |
 | Tune wild population or behaviour | `src/sim/ecology.ts` (`wildTarget`, spawn rules), `src/sim/ai.ts` (`HUNT_RANGE`, `PROVOKED_TIME`, …) |
@@ -96,7 +126,7 @@ tests/       vitest: sim/, net/, server/ (the server tests open real WebSockets 
 ```
 npm install
 npm run dev          # server :8080 (tsx watch) + Vite :5173 (proxies /api and /ws); play at :5173
-npm test             # 69 tests, about 1 s
+npm test             # 82 tests, about 1.5 s
 npm run build        # tsc + vite (dist/) + esbuild server bundle (dist-server/server.cjs)
 docker compose up --build -d   # production, http://localhost:8080
 ```

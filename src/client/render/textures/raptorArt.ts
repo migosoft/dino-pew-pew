@@ -1,7 +1,7 @@
-import type { DinoPalette } from './dinoArt';
+import { METAL, METAL_DARK, METAL_LIGHT, RIVET, type DinoPalette } from './dinoArt';
 import { checker, ellipse, line, litShade, makeCanvas, outline, px, rect } from './pixel';
 
-// Procedural top-down Velociraptor, its head and the rider's dart launcher.
+// Procedural top-down Velociraptor, its head, the rider armor and the twin side guns.
 // All art faces +x (east); canvas center = pivot; rotation frames are produced afterwards.
 
 const OUTLINE = '#17110d';
@@ -110,20 +110,90 @@ export function drawRaptorHead(p: DinoPalette): HTMLCanvasElement {
   return c.canvas;
 }
 
-/** Small dart launcher (the raptor rider's weapon); canvas center = swivel pivot; barrel toward +x, muzzle about 8px from pivot. */
-export function drawRaptorDart(): HTMLCanvasElement {
+/**
+ * Small riveted metal saddle strapped over the back of a ridden raptor, with short struts
+ * out to both flanks where the side guns hang. Same canvas and pivot as the body.
+ */
+export function drawRaptorSaddleArmor(p: DinoPalette): HTMLCanvasElement {
+  const c = makeCanvas(48, 48);
+  const cx = 24;
+  const cy = 24;
+  // Struts out to the gun hangers on both flanks.
+  for (const side of [-1, 1]) {
+    const y0 = side < 0 ? cy - 8 : cy + 5;
+    rect(c, cx, y0, 2, 3, METAL);
+    rect(c, cx, y0, 1, 3, METAL_LIGHT);
+  }
+  // Shell: x -5..3, y -5..5, corners cut, lit from the upper left.
+  const x0 = -5;
+  const x1 = 3;
+  for (let y = -5; y <= 5; y++) {
+    for (let x = x0; x <= x1; x++) {
+      if ((x === x0 || x === x1) && Math.abs(y) === 5) continue;
+      let col = METAL;
+      if (y === -5 || x === x0) col = METAL_LIGHT;
+      else if (y === 5 || x === x1) col = METAL_DARK;
+      px(c, cx + x, cy + y, col);
+    }
+  }
+  // Team-colored trim along both flanks.
+  rect(c, cx + x0 + 1, cy - 4, x1 - x0 - 1, 1, p.tunicLight);
+  rect(c, cx + x0 + 1, cy + 4, x1 - x0 - 1, 1, p.tunic);
+  // Rivets in the corners.
+  for (const [rx, ry] of [
+    [-4, -4],
+    [-4, 4],
+    [2, -4],
+    [2, 4],
+  ]) {
+    px(c, cx + rx, cy + ry, RIVET);
+  }
+  // Leather seat and a raised front lip.
+  rect(c, cx - 4, cy - 2, 5, 5, p.saddle);
+  rect(c, cx - 4, cy - 2, 5, 1, p.saddleLight);
+  rect(c, cx + 2, cy - 3, 1, 7, METAL_LIGHT);
+  outline(c, OUTLINE);
+  return c.canvas;
+}
+
+/** Silver face mask with a grille over the raptor's skull and snout. Same canvas and pivot as the head. */
+export function drawRaptorHeadArmor(p: DinoPalette): HTMLCanvasElement {
+  const c = makeCanvas(28, 28);
+  const cx = 14;
+  const cy = 14;
+  // Helmet over the skull, running out along the snout; the tip stays bare.
+  ellipse(c, cx + 3.5, cy, 3.4, 2.6, (nx, ny, x, y) => litShade(nx, ny, x, y, METAL_DARK, METAL, METAL_LIGHT));
+  ellipse(c, cx + 5.5, cy, 2.8, 1.7, (nx, ny, x, y) => (nx > 0.7 ? null : litShade(nx, ny, x, y, METAL_DARK, METAL, METAL_LIGHT)));
+  // Dark grille slots across the snout.
+  for (const gx of [5, 7]) {
+    px(c, cx + gx, cy - 1, METAL_DARK);
+    px(c, cx + gx, cy, METAL_DARK);
+  }
+  // Ridge along the top with a team-color stud.
+  rect(c, cx + 1, cy - 1, 3, 1, RIVET);
+  px(c, cx + 2, cy, p.tunicLight);
+  // Eye holes.
+  px(c, cx + 3, cy - 2, EYE);
+  px(c, cx + 3, cy + 1, EYE);
+  outline(c, OUTLINE);
+  return c.canvas;
+}
+
+/** Small side-hung gun of the raptor rider. Canvas center = pivot; barrel points +x, muzzle about 8px from pivot. */
+export function drawRaptorSideGun(): HTMLCanvasElement {
   const c = makeCanvas(24, 24);
   const cx = 12;
   const cy = 12;
-  // Dark-wood stock behind the pivot.
-  rect(c, cx - 2, cy - 1, 3, 2, '#4a2e18');
-  rect(c, cx - 2, cy - 1, 3, 1, '#7a5030');
-  // Thin metal barrel.
-  rect(c, cx + 1, cy - 1, 7, 1, '#b8bec4');
-  rect(c, cx + 1, cy, 7, 1, '#62676d');
-  // Bright dart tip at the muzzle.
-  px(c, cx + 8, cy - 1, '#f4f0dc');
-  px(c, cx + 8, cy, '#d8d2b8');
+  // Red power cell behind the breech, as on the box art.
+  rect(c, cx - 2, cy - 1, 1, 3, '#a8282e');
+  px(c, cx - 2, cy - 1, '#e05048');
+  // Compact breech.
+  rect(c, cx - 1, cy - 1, 3, 3, METAL);
+  rect(c, cx - 1, cy - 1, 3, 1, METAL_LIGHT);
+  rect(c, cx - 1, cy + 1, 3, 1, METAL_DARK);
+  // Slim barrel and muzzle.
+  rect(c, cx + 2, cy, 5, 1, METAL_LIGHT);
+  px(c, cx + 7, cy, METAL_DARK);
   outline(c, OUTLINE);
   return c.canvas;
 }

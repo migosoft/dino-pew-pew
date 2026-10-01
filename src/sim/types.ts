@@ -15,6 +15,8 @@ export interface InputCommand {
   /** Point in world space the rider wants to shoot at. */
   aimWorld: Vec2;
   fire: boolean;
+  /** Trigger the species ability (raptor leap, triceratops dash). */
+  ability?: boolean;
 }
 
 /** A rider team id (see TeamState), or WILD_TEAM for riderless wild dinosaurs. */
@@ -64,6 +66,23 @@ export interface MeleeDef {
   interval: number;
 }
 
+/** Active ability on a cooldown: a leap toward the aim point, or a straight dash. Both deal damage on impact. */
+export interface AbilityDef {
+  kind: 'leap' | 'dash';
+  /** Seconds between uses. */
+  cooldown: number;
+  /** Seconds the ability controls movement. */
+  duration: number;
+  damage: number;
+  /** Leap: min and max distance to the landing point. */
+  minRange?: number;
+  maxRange?: number;
+  /** Dash: pixels per second. */
+  speed?: number;
+  /** Extra distance beyond touching (sum of radii) at which the impact hits. */
+  hitReach: number;
+}
+
 export interface DinoDef {
   kind: string;
   melee: MeleeDef;
@@ -87,6 +106,7 @@ export interface DinoDef {
   mounts: MountDef[];
   /** All mounts fire together on every trigger pull, each along its own barrel. */
   volley?: boolean;
+  ability?: AbilityDef;
 }
 
 export interface WeaponDef {
@@ -140,6 +160,15 @@ export interface Dino {
   /** Seconds the hit flash remains visible. */
   hitFlash: number;
   meleeCooldown: number;
+  /** Seconds until the ability can be used again. */
+  abilityCooldown: number;
+  /** Seconds into the running ability, or -1 when none is running. */
+  abilityT: number;
+  /** Leap path (start and landing point). */
+  abilityFrom: Vec2;
+  abilityTo: Vec2;
+  /** Dinos already struck by the running dash. */
+  abilityHit: number[];
   /** Who damaged this dino last (wild AI reacts to it). */
   lastAttacker: number | null;
   /** Seconds since last damaged. */
@@ -260,6 +289,8 @@ export type GameEvent =
     }
   | { type: 'hit'; projectileId: number; x: number; y: number; targetId: number }
   | { type: 'melee'; attackerId: number; targetId: number; x: number; y: number }
+  | { type: 'ability'; dinoId: number; kind: AbilityDef['kind']; x: number; y: number }
+  | { type: 'slam'; dinoId: number; x: number; y: number }
   | { type: 'impact'; projectileId: number; x: number; y: number }
   | { type: 'death'; dinoId: number; x: number; y: number; team: Team }
   | { type: 'kill'; killer: number | null; victim: number | null; victimKind: string }

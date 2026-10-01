@@ -203,10 +203,10 @@ export function drawRider(p: DinoPalette): HTMLCanvasElement {
 }
 
 // Gunmetal for armor plates and guns (shared by all teams; team color goes on trim).
-const METAL_DARK = '#3a3f47';
-const METAL = '#6b7480';
-const METAL_LIGHT = '#a8b2bd';
-const RIVET = '#dde3e8';
+export const METAL_DARK = '#3a3f47';
+export const METAL = '#6b7480';
+export const METAL_LIGHT = '#a8b2bd';
+export const RIVET = '#dde3e8';
 
 /**
  * Armored howdah strapped over the back of a ridden Triceratops, with struts out to both

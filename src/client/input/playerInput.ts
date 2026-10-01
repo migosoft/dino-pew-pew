@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { InputCommand } from '../../sim/types';
 
-/** Keyboard steers the dino (W/S throttle, A/D turn); the mouse aims and fires. */
+/** Keyboard steers the dino (W/S throttle, A/D turn); the mouse aims and fires, right button uses the ability. */
 export class PlayerInput {
   private keys: Record<string, Phaser.Input.Keyboard.Key>;
 
@@ -24,6 +24,7 @@ export class PlayerInput {
     const throttle = (k.W.isDown || k.UP.isDown ? 1 : 0) - (k.S.isDown || k.DOWN.isDown ? 1 : 0);
     const turn = (k.D.isDown || k.RIGHT.isDown ? 1 : 0) - (k.A.isDown || k.LEFT.isDown ? 1 : 0);
     const fire = this.scene.input.activePointer.leftButtonDown() || k.SPACE.isDown;
-    return { throttle, turn, aimWorld: this.aimWorld(), fire };
+    const ability = this.scene.input.activePointer.rightButtonDown();
+    return { throttle, turn, aimWorld: this.aimWorld(), fire, ability };
   }
 }

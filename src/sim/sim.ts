@@ -10,6 +10,8 @@ import { fireMounts } from './systems/firing';
 import { updateProjectiles } from './systems/projectiles';
 import { feed, updateFood } from './systems/feeding';
 import { updateMelee } from './systems/melee';
+import { tryStartAbility, updateAbility } from './systems/abilities';
+import { isAirborne } from './world';
 import { computeWildCommand } from './ai';
 import { populateWild, updateEcology } from './ecology';
 
@@ -56,19 +58,27 @@ export function step(state: GameState, inputs: Map<number, InputCommand>, dt: nu
     d.pheading = d.heading;
     d.hitFlash = Math.max(0, d.hitFlash - dt);
     d.sinceHit += dt;
+    d.abilityCooldown = Math.max(0, d.abilityCooldown - dt);
     for (const m of d.mounts) m.cooldown = Math.max(0, m.cooldown - dt);
 
     const cmd = d.playerId !== null ? inputs.get(d.playerId) : d.ai ? computeWildCommand(state, d, dt) : undefined;
+    // A running leap or dash steers the dino by itself; the rider can still aim and fire.
+    const busy = updateAbility(state, d, dt);
     if (!cmd) {
       // No input (e.g. connection hiccup): roll to a stop.
-      moveDino(d, { throttle: 0, turn: 0, aimWorld: d, fire: false }, dt);
-      resolveObstacles(state, d);
+      if (!busy) {
+        moveDino(d, { throttle: 0, turn: 0, aimWorld: d, fire: false }, dt);
+        resolveObstacles(state, d);
+      }
       feed(state, d, false, dt);
       continue;
     }
 
-    moveDino(d, cmd, dt);
-    resolveObstacles(state, d);
+    if (!busy) {
+      moveDino(d, cmd, dt);
+      resolveObstacles(state, d);
+      tryStartAbility(state, d, cmd);
+    }
     const def = getDino(d.kind);
     const errors = updateAim(d, def, cmd.aimWorld, dt);
     // Only riders operate the mounted weapons.
@@ -79,7 +89,7 @@ export function step(state: GameState, inputs: Map<number, InputCommand>, dt: nu
 
   resolveDinoContacts(state);
   updateMelee(state, dt);
-  for (const d of state.dinos) if (d.alive) resolveObstacles(state, d);
+  for (const d of state.dinos) if (d.alive && !isAirborne(d)) resolveObstacles(state, d);
   updateProjectiles(state, dt);
   updateFood(state, dt);
   state.dinos = state.dinos.filter((d) => d.alive);

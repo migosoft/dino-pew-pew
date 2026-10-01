@@ -35,6 +35,7 @@ export class GameScene extends Phaser.Scene {
   private projectileView!: ProjectileView;
   private foodView!: FoodView;
   private lastFeedFx = 0;
+  private lastDashFx = 0;
   private shop!: ShopPanel;
   private inBase = false;
   private fx!: Effects;
@@ -96,7 +97,7 @@ export class GameScene extends Phaser.Scene {
     const command = this.playerInput.command.bind(this.playerInput);
     this.playerInput.command = () => {
       const c = command();
-      return this.shop.isOpen ? { ...c, fire: false } : c;
+      return this.shop.isOpen ? { ...c, fire: false, ability: false } : c;
     };
     const cam = this.cameras.main;
     cam.setBounds(0, 0, this.world.width, this.world.height);
@@ -125,6 +126,10 @@ export class GameScene extends Phaser.Scene {
     if (time - this.lastFeedFx > 250) {
       this.lastFeedFx = time;
       for (const d of dinos) if (d.eating) this.fx.feed(d.x + Math.cos(d.heading) * geometry(d).mouth, d.y + Math.sin(d.heading) * geometry(d).mouth, getDino(d.kind).diet === 'carnivore');
+    }
+    if (time - this.lastDashFx > 40) {
+      this.lastDashFx = time;
+      for (const d of dinos) if (d.abilityT >= 0 && getDino(d.kind).ability?.kind === 'dash') this.fx.dashTrail(d.x - Math.cos(d.heading) * 8, d.y - Math.sin(d.heading) * 8);
     }
     this.syncDinoViews(dinos);
     const meInfo = players.find((p) => p.id === me);
@@ -179,6 +184,15 @@ export class GameScene extends Phaser.Scene {
         this.fx.hit(e.x, e.y);
         if (this.dinoViews.get(e.targetId)?.lastView.playerId === this.net.welcome!.playerId) this.cameras.main.shake(100, 0.004);
         break;
+      case 'ability':
+        this.fx.takeOff(e.x, e.y);
+        break;
+      case 'slam': {
+        const cam = this.cameras.main;
+        this.fx.slam(e.x, e.y);
+        if (cam.worldView.contains(e.x, e.y)) cam.shake(140, 0.005);
+        break;
+      }
       case 'impact':
         this.fx.impact(e.x, e.y);
         break;

@@ -84,9 +84,13 @@ export class Hud {
     g.fillStyle(0xffffff, 0.35).fillRect(6, 6, Math.round(70 * hpFrac), 1);
 
     const riders = m.players.length;
+    // Right-mouse ability and its cooldown.
+    const ability = d ? getDino(d.kind).ability : undefined;
+    const abilityLine = ability && d ? `\n${ability.kind === 'leap' ? 'JUMP' : 'DASH'} ${d.abilityCooldown > 0 ? `IN ${Math.ceil(d.abilityCooldown)}` : 'READY'}` : '';
     this.stats
       .setText(
         `TEAM ${teamInfo?.name ?? '?'}\n$ ${m.me?.money ?? 0}\nK ${m.me?.kills ?? 0}  D ${m.me?.deaths ?? 0}\nRIDERS ${riders}` +
+          abilityLine +
           (m.me && totalLevels(m.me.upgrades) > 0
             ? `\nDMG${m.me.upgrades.damage} RNG${m.me.upgrades.range} ROF${m.me.upgrades.fireRate} ARM${m.me.upgrades.armor}`
             : ''),

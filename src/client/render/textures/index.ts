@@ -27,7 +27,7 @@ import {
   drawTrunk,
 } from './worldArt';
 import { FONT_CHARS, FONT_H, FONT_W, drawFont } from './font';
-import { drawRaptorBody, drawRaptorDart, drawRaptorHead } from './raptorArt';
+import { drawRaptorBody, drawRaptorHead, drawRaptorHeadArmor, drawRaptorSaddleArmor, drawRaptorSideGun } from './raptorArt';
 import { BUSH_VARIANTS, FERN_VARIANTS, drawBush, drawCarcass, drawFernPatch, type FoodStage } from './foodArt';
 
 /** Rotation frames for parts that turn (bodies, heads, weapons). */
@@ -69,12 +69,16 @@ export function generateTextures(scene: Phaser.Scene): void {
       if (slot === 0) addStrip(scene, `velociraptor_shadow_${pose}`, silhouette(body, 'rgba(0,0,0,0.32)'), DIRS);
     }
     addStrip(scene, `velociraptor_head_${key}`, drawRaptorHead(pal), DIRS);
+    if (key !== 'wild') {
+      addStrip(scene, `velociraptor_armor_${key}`, drawRaptorSaddleArmor(pal), DIRS);
+      addStrip(scene, `velociraptor_headArmor_${key}`, drawRaptorHeadArmor(pal), DIRS);
+    }
     addStrip(scene, `rider_${key}`, drawRider(pal), DIRS);
     addImage(scene, `totem_${key}`, drawTotem(pal.tunic, pal.tunicLight));
   });
   addImage(scene, 'campStone', drawCampStone());
   addStrip(scene, 'weapon_sideCannon', drawSideCannon(), DIRS);
-  addStrip(scene, 'weapon_raptorDart', drawRaptorDart(), DIRS);
+  addStrip(scene, 'weapon_raptorSideGun', drawRaptorSideGun(), DIRS);
 
   const stages: FoodStage[] = [0, 1, 2];
   for (const st of stages) {

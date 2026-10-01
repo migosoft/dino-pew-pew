@@ -23,14 +23,17 @@ One container runs one Node process that serves the game page and the game WebSo
 on port 8080; `/api/health` backs the container health check. For play over the internet, put a
 TLS reverse proxy (e.g. Caddy or nginx) in front and forward WebSocket upgrades.
 
-**Controls:** W/S throttle, A/D turn, mouse aims, left click (or Space) fires, E opens the shop
-(in your base camp), hold Tab for scores.
+**Controls:** W/S throttle, A/D turn, mouse aims, left click (or Space) fires, right click uses
+your mount's ability (15 s cooldown), E opens the shop (in your base camp), hold Tab for scores.
 
 ## Gameplay
 
-- **Mounts:** Triceratops (herbivore, tough, forward horn cannon) or Velociraptor (carnivore,
-  fast, small, weak forward dart launcher). Weapons fire along their barrel, within the arc the
-  mount allows. Every dino also has a natural melee attack (horns, claws) against whatever is
+- **Mounts:** Triceratops (herbivore, tough, armored, a heavy cannon on each flank) or
+  Velociraptor (carnivore, fast, small, a light gun on each side of its metal saddle). Both guns
+  fire together, along their barrels, within the arc the mount allows.
+- **Abilities (right click, 15 s cooldown):** the Velociraptor leaps toward the cursor, over
+  rocks and dinos, and slams down on whoever is below. The Triceratops dashes straight ahead and
+  rams everything in its path. Wild dinos use them too, now and then. Every dino also has a natural melee attack (horns, claws) against whatever is
   right in front of it.
 - **Wild dinosaurs** without riders roam the world (more when more riders are online).
   Herbivores graze and charge (or flee from) attackers; raptors hunt riders outside their camp.

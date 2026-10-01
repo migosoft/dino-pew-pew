@@ -96,6 +96,7 @@ export class Mirror {
       b.headYaw = lerp(a.headYaw, b.headYaw, t);
       b.stride = lerp(a.stride, b.stride, t);
       b.mounts.forEach((m, k) => (m.angle = lerp(a.mounts[k]?.angle ?? m.angle, m.angle, t)));
+      if (a.abilityT >= 0 && b.abilityT >= 0) b.abilityT = lerp(a.abilityT, b.abilityT, t);
       return b;
     });
   }

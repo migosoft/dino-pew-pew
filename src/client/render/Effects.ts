@@ -47,6 +47,25 @@ export class Effects {
     this.dust.explode(2, x, y);
   }
 
+  /** Dust kicked up as a leap or dash starts. */
+  takeOff(x: number, y: number): void {
+    this.dust.explode(6, x, y);
+  }
+
+  /** Puff of dust behind a dashing dino. */
+  dashTrail(x: number, y: number): void {
+    this.dust.explode(1, x, y);
+  }
+
+  /** Leap landing: a ring of dust and sparks. */
+  slam(x: number, y: number): void {
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      this.dust.explode(1, x + Math.cos(a) * 8, y + Math.sin(a) * 8);
+    }
+    this.sparks.explode(8, x, y);
+  }
+
   death(x: number, y: number): void {
     this.sparks.explode(18, x, y);
     this.dust.explode(14, x, y);

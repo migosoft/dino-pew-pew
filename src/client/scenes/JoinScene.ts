@@ -89,6 +89,6 @@ export class JoinScene extends Phaser.Scene {
       enabled: true,
       pick: () => this.scene.start('game', { team: this.team, kind: s.kind }),
     }));
-    this.menu('W/S MOVE  A/D TURN  MOUSE AIM  CLICK FIRE  TAB SCORES', options);
+    this.menu('W/S MOVE  A/D TURN  MOUSE AIM  CLICK FIRE  R-CLICK JUMP/DASH  TAB SCORES', options);
   }
 }
