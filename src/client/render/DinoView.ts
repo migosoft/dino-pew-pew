@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
-import type { Dino } from '../sim/types';
-import { getDino } from '../sim/defs/dinos';
-import { lerp, lerpAngle, localToWorld } from '../sim/math';
-import { mountFrame } from '../sim/systems/aiming';
+import type { Dino } from '../../sim/types';
+import { getDino } from '../../sim/defs/dinos';
+import { lerp, lerpAngle, localToWorld } from '../../sim/math';
+import { mountFrame } from '../../sim/systems/aiming';
 import { frameForAngle } from './textures/pixel';
 import { DIRS } from './textures';
 import { DEPTH } from './depth';

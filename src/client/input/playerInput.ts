@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import type { InputCommand } from '../sim/types';
+import type { InputCommand } from '../../sim/types';
 
 /** Keyboard steers the dino (W/S throttle, A/D turn); the mouse aims and fires. */
 export class PlayerInput {

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
-import type { GameState } from '../sim/types';
-import { getDino } from '../sim/defs/dinos';
+import type { GameState } from '../../sim/types';
+import { getDino } from '../../sim/defs/dinos';
 import { FONT_KEY } from './textures';
 import { DEPTH } from './depth';
 import type { DinoView } from './DinoView';

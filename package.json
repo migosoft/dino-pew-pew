@@ -1,18 +1,25 @@
 {
   "name": "dinoriders",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "preview": "vite preview",
+    "dev": "concurrently -k -n server,client -c yellow,cyan \"tsx watch src/server/main.ts\" \"vite\"",
+    "build": "tsc --noEmit && vite build && npm run build:server",
+    "build:server": "esbuild src/server/main.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist-server/server.cjs --external:bufferutil --external:utf-8-validate",
+    "start": "node dist-server/server.cjs",
     "test": "vitest run"
   },
   "dependencies": {
-    "phaser": "^3.90.0"
+    "phaser": "^3.90.0",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@types/ws": "^8.18.2",
+    "concurrently": "^10.0.5",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",
     "vitest": "^5.0.3"

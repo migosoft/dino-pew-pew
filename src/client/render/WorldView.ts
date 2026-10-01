@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import type { Obstacle, Vec2, World } from '../sim/types';
+import type { Obstacle, Vec2, World } from '../../sim/types';
 import { CANOPY_SIZES, ROCK_SIZES, drawGround, nearestSize } from './textures/worldArt';
 import { DEPTH } from './depth';
 

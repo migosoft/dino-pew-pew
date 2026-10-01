@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
-import type { Projectile } from '../sim/types';
-import { lerp } from '../sim/math';
+import type { Projectile } from '../../sim/types';
+import { lerp } from '../../sim/math';
 import { frameForAngle } from './textures/pixel';
 import { BOLT_DIRS } from './textures';
 import { DEPTH } from './depth';

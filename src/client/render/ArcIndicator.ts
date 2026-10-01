@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
-import type { Dino } from '../sim/types';
-import { getDino } from '../sim/defs/dinos';
-import { getWeapon } from '../sim/defs/weapons';
-import { mountCoverage, mountFrame, muzzlePoint } from '../sim/systems/aiming';
+import type { Dino } from '../../sim/types';
+import { getDino } from '../../sim/defs/dinos';
+import { getWeapon } from '../../sim/defs/weapons';
+import { mountCoverage, mountFrame, muzzlePoint } from '../../sim/systems/aiming';
 import { DEPTH } from './depth';
 
 const WEDGE_RADIUS = 64;

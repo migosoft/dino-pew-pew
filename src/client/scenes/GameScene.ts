@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
-import type { GameEvent, GameState, InputCommand } from '../sim/types';
-import { DT } from '../sim/types';
-import { clamp } from '../sim/math';
-import { createGame, step } from '../sim/sim';
+import type { GameEvent, GameState, InputCommand } from '../../sim/types';
+import { DT } from '../../sim/types';
+import { clamp } from '../../sim/math';
+import { createGame, step } from '../../sim/sim';
 import { PlayerInput } from '../input/playerInput';
 import { WorldView } from '../render/WorldView';
 import { DinoView } from '../render/DinoView';

@@ -1,5 +1,5 @@
-import { Tile, type World } from '../../sim/types';
-import { valueNoise } from '../../sim/noise';
+import { Tile, type World } from '../../../sim/types';
+import { valueNoise } from '../../../sim/noise';
 import { checker, ellipse, hash2, line, litShade, makeCanvas, outline, px, rect, seededRandom } from './pixel';
 
 const OUTLINE = '#17110d';

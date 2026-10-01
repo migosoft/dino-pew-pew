@@ -5,10 +5,21 @@ prehistoric world and survive waves of enemy riders.
 
 ```
 npm install
-npm run dev     # play at http://localhost:5173
-npm test        # simulation unit tests
-npm run build   # type-check + production bundle in dist/
+npm run dev     # game server (:8080) + Vite (:5173, proxies /api and /ws) — play at http://localhost:5173
+npm test        # unit + server tests
+npm run build   # type-check, client bundle in dist/, server bundle in dist-server/
+npm start       # run the production server (serves dist/ on :8080)
 ```
+
+### Docker
+
+```
+docker compose up --build -d    # play at http://localhost:8080 (LAN: http://<host-ip>:8080)
+```
+
+One container runs one Node process that serves the game page and the game WebSocket (`/ws`)
+on port 8080; `/api/health` backs the container health check. For play over the internet, put a
+TLS reverse proxy (e.g. Caddy or nginx) in front and forward WebSocket upgrades.
 
 **Controls:** W/S throttle, A/D turn, mouse aims, left click (or Space) fires.
 
