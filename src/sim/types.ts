@@ -48,8 +48,19 @@ export interface MountDef {
   muzzle: number;
 }
 
+/** Every species is one of these; omnivores eat everything. */
+export type Diet = 'herbivore' | 'carnivore' | 'omnivore';
+/** Small species cannot reach tree foliage and leave smaller carcasses. */
+export type BodySize = 'small' | 'large';
+
 export interface DinoDef {
   kind: string;
+  diet: Diet;
+  size: BodySize;
+  /** HP regained per second while eating. */
+  eatRate: number;
+  /** Base money paid for killing one (economy). */
+  bounty: number;
   radius: number;
   maxSpeed: number;
   reverseSpeed: number;
@@ -109,6 +120,8 @@ export interface Dino {
   fireIntervalMul: number;
   /** Distance travelled, used to animate legs. */
   stride: number;
+  /** True while standing at food and healing (this tick). */
+  eating: boolean;
   // Previous-tick values, for render interpolation.
   px: number;
   py: number;
@@ -134,6 +147,28 @@ export interface Projectile {
 }
 
 export type ObstacleKind = 'rock' | 'tree';
+
+export type FoodKind = 'tree' | 'bush' | 'fern' | 'carcass';
+
+/** Something a dino can eat by standing next to it. Plants regrow; carcasses don't. */
+export interface FoodSource {
+  id: number;
+  kind: FoodKind;
+  x: number;
+  y: number;
+  /** How close (beyond the eater's radius) a dino must stand to eat. */
+  reach: number;
+  food: number;
+  maxFood: number;
+  /** Food units consumed per HP healed (carcasses are far more nourishing). */
+  costPerHp: number;
+  /** Seconds since last eaten (plants regrow after a pause). */
+  idle: number;
+  /** Visual variant (plants) or species (carcasses). */
+  variant: number;
+  species?: string;
+  heading?: number;
+}
 
 export interface Obstacle {
   id: number;
@@ -172,6 +207,8 @@ export interface World {
   gridRows: number;
   /** Team base camp centers, one per possible team slot (kept clear of obstacles). */
   bases: Vec2[];
+  /** Initial food sources (plants + a few old carcasses); the match copies these into state.food. */
+  food: FoodSource[];
 }
 
 export type GameEvent =
@@ -224,6 +261,7 @@ export interface GameState {
   nextId: number;
   teams: TeamState[];
   players: PlayerState[];
+  food: FoodSource[];
 }
 
 export const TICK_RATE = 60;

@@ -1,5 +1,5 @@
 import type { InputCommand } from '../../sim/types';
-import { encodeInput, type ServerMsg, type WelcomeMsg } from '../../net/protocol';
+import { encodeInput, type PlantTuple, type ServerMsg, type WelcomeMsg } from '../../net/protocol';
 import { Mirror } from './Mirror';
 
 export type NetStatus = 'connecting' | 'joining' | 'playing' | 'closed';
@@ -18,6 +18,7 @@ export class NetClient {
   onWelcome?: (w: WelcomeMsg) => void;
   private ws: WebSocket;
   private seq = 0;
+  private plantUpdates: PlantTuple[] = [];
 
   constructor(url: string, team: string, kind: string) {
     this.ws = new WebSocket(url);
@@ -36,16 +37,25 @@ export class NetClient {
       case 'welcome':
         this.welcome = msg;
         this.status = 'playing';
+        this.plantUpdates.push(...msg.plants);
         this.onWelcome?.(msg);
         break;
       case 'snap':
         this.mirror.push(msg, performance.now());
+        if (msg.plants.length) this.plantUpdates.push(...msg.plants);
         break;
       case 'error':
         this.error = msg.message;
         this.ws.close();
         break;
     }
+  }
+
+  /** Plant food levels received since the last call (applied immediately, not interpolated). */
+  takePlantUpdates(): PlantTuple[] {
+    const u = this.plantUpdates;
+    this.plantUpdates = [];
+    return u;
   }
 
   sendInput(cmd: InputCommand): void {

@@ -27,6 +27,12 @@ export class Effects {
       .setDepth(DEPTH.fx - 1);
   }
 
+  /** Little leaves (herbivores) or bits of meat (carnivores) popping up while eating. */
+  feed(x: number, y: number, meat: boolean): void {
+    const bit = this.scene.add.image(Math.round(x + (Math.random() - 0.5) * 8), Math.round(y - 4), meat ? 'meat' : 'leaf').setDepth(DEPTH.fx);
+    this.scene.tweens.add({ targets: bit, y: bit.y - 8, alpha: 0, duration: 500, onComplete: () => bit.destroy() });
+  }
+
   muzzle(x: number, y: number): void {
     const f = this.scene.add.image(Math.round(x), Math.round(y), 'flash').setDepth(DEPTH.fx);
     this.scene.time.delayedCall(50, () => f.destroy());

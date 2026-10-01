@@ -7,6 +7,9 @@ import { NetClient, gameSocketUrl } from '../net/NetClient';
 import { PlayerInput } from '../input/playerInput';
 import { WorldView } from '../render/WorldView';
 import { DinoView } from '../render/DinoView';
+import { FoodView } from '../render/FoodView';
+import { getDino } from '../../sim/defs/dinos';
+import { geometry } from '../render/geometry';
 import { ProjectileView } from '../render/ProjectileView';
 import { Effects } from '../render/Effects';
 import { ArcIndicator } from '../render/ArcIndicator';
@@ -26,6 +29,8 @@ export class GameScene extends Phaser.Scene {
   private worldView!: WorldView;
   private dinoViews = new Map<number, DinoView>();
   private projectileView!: ProjectileView;
+  private foodView!: FoodView;
+  private lastFeedFx = 0;
   private fx!: Effects;
   private arc!: ArcIndicator;
   private hud!: Hud;
@@ -65,6 +70,7 @@ export class GameScene extends Phaser.Scene {
     this.status.setText('');
     this.world = generateWorld(w.seed);
     this.worldView = new WorldView(this, this.world);
+    this.foodView = new FoodView(this, this.world.food);
     this.projectileView = new ProjectileView(this);
     this.fx = new Effects(this);
     this.arc = new ArcIndicator(this);
@@ -92,7 +98,13 @@ export class GameScene extends Phaser.Scene {
     const teams = mirror.teams();
     for (const e of mirror.takeEvents(rt)) this.handleEvent(e, players);
 
+    this.foodView.setPlants(this.net.takePlantUpdates());
+    this.foodView.setCarcasses(mirror.latest()!.carcasses);
     const dinos = mirror.dinosAt(rt);
+    if (time - this.lastFeedFx > 250) {
+      this.lastFeedFx = time;
+      for (const d of dinos) if (d.eating) this.fx.feed(d.x + Math.cos(d.heading) * geometry(d).mouth, d.y + Math.sin(d.heading) * geometry(d).mouth, getDino(d.kind).diet === 'carnivore');
+    }
     this.syncDinoViews(dinos);
     const meInfo = players.find((p) => p.id === me);
     const myDino = dinos.find((d) => d.playerId === me);

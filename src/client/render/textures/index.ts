@@ -18,10 +18,14 @@ import {
   drawTrunk,
 } from './worldArt';
 import { FONT_CHARS, FONT_H, FONT_W, drawFont } from './font';
+import { drawRaptorBody, drawRaptorDart, drawRaptorHead } from './raptorArt';
+import { BUSH_VARIANTS, FERN_VARIANTS, drawBush, drawCarcass, drawFernPatch, type FoodStage } from './foodArt';
 
 /** Rotation frames for parts that turn (bodies, heads, weapons). */
 export const DIRS = 64;
 export const BOLT_DIRS = 32;
+/** Carcasses lie still, so fewer rotation frames suffice. */
+export const CARCASS_DIRS = 16;
 export const FONT_KEY = 'pixelfont';
 
 function addStrip(scene: Phaser.Scene, key: string, src: HTMLCanvasElement, n: number): void {
@@ -44,11 +48,27 @@ export function generateTextures(scene: Phaser.Scene): void {
       if (slot === 0) addStrip(scene, `triceratops_shadow_${pose}`, silhouette(body, 'rgba(0,0,0,0.32)'), DIRS);
     }
     addStrip(scene, `triceratops_head_${key}`, drawTriceratopsHead(pal), DIRS);
+    for (const pose of [0, 1] as const) {
+      const body = drawRaptorBody(pal, pose);
+      addStrip(scene, `velociraptor_body_${key}_${pose}`, body, DIRS);
+      if (slot === 0) addStrip(scene, `velociraptor_shadow_${pose}`, silhouette(body, 'rgba(0,0,0,0.32)'), DIRS);
+    }
+    addStrip(scene, `velociraptor_head_${key}`, drawRaptorHead(pal), DIRS);
     addStrip(scene, `rider_${key}`, drawRider(pal), DIRS);
     addImage(scene, `totem_${key}`, drawTotem(pal.tunic, pal.tunicLight));
   });
   addImage(scene, 'campStone', drawCampStone());
   addStrip(scene, 'weapon_hornCannon', drawHornCannon(), DIRS);
+  addStrip(scene, 'weapon_raptorDart', drawRaptorDart(), DIRS);
+
+  const stages: FoodStage[] = [0, 1, 2];
+  for (const st of stages) {
+    for (let v = 0; v < BUSH_VARIANTS; v++) addImage(scene, `bush_${v}_${st}`, drawBush(v, st));
+    for (let v = 0; v < FERN_VARIANTS; v++) addImage(scene, `fern_${v}_${st}`, drawFernPatch(v, st));
+    for (const kind of ['triceratops', 'velociraptor'] as const) addStrip(scene, `carcass_${kind}_${st}`, drawCarcass(kind, st), CARCASS_DIRS);
+  }
+  addImage(scene, 'leaf', drawDot(1, '#8ed05a'));
+  addImage(scene, 'meat', drawDot(1, '#c83a2a'));
   // Bolts: your own team's shots are warm yellow, everyone else's are red.
   addStrip(scene, 'bolt_friendly', drawBolt('#fff6b0', '#ffb030'), BOLT_DIRS);
   addStrip(scene, 'bolt_hostile', drawBolt('#ffd0c0', '#ff4a2c'), BOLT_DIRS);

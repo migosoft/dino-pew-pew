@@ -1,4 +1,5 @@
-import { Tile, type Obstacle, type Vec2, type World } from './types';
+import { Tile, type FoodKind, type FoodSource, type Obstacle, type Vec2, type World } from './types';
+import { FOOD, makeCarcass } from './systems/feeding';
 import { fbm } from './noise';
 import { makeRng, rand, randInt, randRange } from './rng';
 import { indexObstacles } from './world';
@@ -11,6 +12,11 @@ export interface WorldGenOptions {
 
 /** Obstacle-free radius around each base camp. */
 export const BASE_CLEAR = 140;
+/** Old carcasses lying around at world creation. */
+export const MIN_WORLD_CARCASSES = 6;
+export const MAX_WORLD_CARCASSES = 10;
+/** Ids for the initial carcasses (live carcasses use CARCASS_ID_BASE + n). */
+const WORLD_CARCASS_ID_BASE = 900_000;
 /** Distance of base camps from the map edge. */
 const BASE_INSET = 260;
 
@@ -100,6 +106,8 @@ export function generateWorld(seed: number, opts: WorldGenOptions = {}): World {
     }
   }
 
+  const food = generateFood(rng, seed, width, height, cols, tileSize, tiles, obstacles, bases);
+
   const world: World = {
     seed,
     tileSize,
@@ -114,7 +122,68 @@ export function generateWorld(seed: number, opts: WorldGenOptions = {}): World {
     gridCols: 0,
     gridRows: 0,
     bases,
+    food,
   };
   indexObstacles(world);
   return world;
+}
+
+function plant(id: number, kind: FoodKind, x: number, y: number, reach: number, variant: number): FoodSource {
+  const t = FOOD[kind];
+  return { id, kind, x, y, reach, food: t.maxFood, maxFood: t.maxFood, costPerHp: t.costPerHp, idle: 0, variant };
+}
+
+/**
+ * Food sources: every tree, bushes on grass, fern patches on fern ground, and a few
+ * old carcasses. Nothing grows inside base camps, so riders have to go out to eat.
+ */
+function generateFood(
+  rng: ReturnType<typeof makeRng>,
+  seed: number,
+  width: number,
+  height: number,
+  cols: number,
+  tileSize: number,
+  tiles: Uint8Array,
+  obstacles: Obstacle[],
+  bases: Vec2[],
+): FoodSource[] {
+  const food: FoodSource[] = [];
+  let id = 1;
+  const clearOf = (x: number, y: number, gap: number) =>
+    obstacles.every((o) => (o.x - x) ** 2 + (o.y - y) ** 2 > (o.r + gap) ** 2) &&
+    food.every((f) => (f.x - x) ** 2 + (f.y - y) ** 2 > (gap + 8) ** 2) &&
+    bases.every((b) => (b.x - x) ** 2 + (b.y - y) ** 2 > (BASE_CLEAR + 10) ** 2);
+
+  for (const o of obstacles) if (o.kind === 'tree') food.push(plant(id++, 'tree', o.x, o.y, o.r + 6, 0));
+
+  const cell = 48;
+  for (let gy = 1; gy < Math.floor(height / cell) - 1; gy++) {
+    for (let gx = 1; gx < Math.floor(width / cell) - 1; gx++) {
+      const x = gx * cell + randRange(rng, 6, cell - 6);
+      const y = gy * cell + randRange(rng, 6, cell - 6);
+      const t = tiles[Math.floor(y / tileSize) * cols + Math.floor(x / tileSize)];
+      const lush = fbm(x / 150, y / 150, seed + 303, 3);
+      const roll = rand(rng);
+      if (t === Tile.Fern && roll < 0.45) {
+        if (clearOf(x, y, 10)) food.push(plant(id++, 'fern', x, y, 9, randInt(rng, 2)));
+      } else if ((t === Tile.Grass || t === Tile.GrassDark) && roll < 0.05 + Math.max(0, (lush - 0.5) * 0.6)) {
+        if (clearOf(x, y, 10)) food.push(plant(id++, 'bush', x, y, 8, randInt(rng, 3)));
+      }
+    }
+  }
+
+  // A few old carcasses, spread out and away from the camps.
+  const want = MIN_WORLD_CARCASSES + randInt(rng, MAX_WORLD_CARCASSES - MIN_WORLD_CARCASSES + 1);
+  const carcasses: FoodSource[] = [];
+  for (let attempt = 0; attempt < 400 && carcasses.length < want; attempt++) {
+    const x = randRange(rng, 120, width - 120);
+    const y = randRange(rng, 120, height - 120);
+    if (bases.some((b) => (b.x - x) ** 2 + (b.y - y) ** 2 < 320 * 320)) continue;
+    if (carcasses.some((c) => (c.x - x) ** 2 + (c.y - y) ** 2 < 260 * 260)) continue;
+    if (!obstacles.every((o) => (o.x - x) ** 2 + (o.y - y) ** 2 > (o.r + 20) ** 2)) continue;
+    const species = rand(rng) < 0.5 ? 'triceratops' : 'velociraptor';
+    carcasses.push(makeCarcass(WORLD_CARCASS_ID_BASE + carcasses.length, species, x, y, rand(rng) * Math.PI * 2));
+  }
+  return food.concat(carcasses);
 }

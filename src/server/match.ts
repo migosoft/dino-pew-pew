@@ -11,9 +11,11 @@ import {
   buildSnapshot,
   isKnownTeam,
   parseClientMsg,
+  plantLevels,
   speciesInfo,
   teamInfos,
   type LobbyInfo,
+  type PlantTuple,
   type ServerMsg,
   type TimedEvent,
 } from '../net/protocol';
@@ -39,6 +41,8 @@ export class Match {
   readonly seed: number;
   private sessions = new Set<Session>();
   private pending: TimedEvent[] = [];
+  /** Plant food levels as last broadcast, to send only changes. */
+  private sentPlants = new Map<number, number>();
   private nameCounter = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastTime = 0;
@@ -47,6 +51,7 @@ export class Match {
   constructor(seed: number) {
     this.seed = seed;
     this.state = createMatch(seed);
+    this.sentPlants = plantLevels(this.state);
   }
 
   lobby(): LobbyInfo {
@@ -99,7 +104,13 @@ export class Match {
   }
 
   private broadcast(): void {
-    const body = JSON.stringify(buildSnapshot(this.state, this.pending));
+    const changed: PlantTuple[] = [];
+    for (const [id, food] of plantLevels(this.state)) {
+      if (this.sentPlants.get(id) === food) continue;
+      this.sentPlants.set(id, food);
+      changed.push([id, food]);
+    }
+    const body = JSON.stringify(buildSnapshot(this.state, this.pending, changed));
     this.pending = [];
     // Splice the per-recipient ack into the shared body instead of re-serializing.
     const rest = body.slice(1);
@@ -158,6 +169,8 @@ export class Match {
     }
     const player = addPlayer(state, teamId, msg.kind, `RIDER ${++this.nameCounter}`);
     s.playerId = player.id;
-    this.send(s, { t: 'welcome', protocol: PROTOCOL_VERSION, playerId: player.id, seed: this.seed, tick: state.tick, tickRate: TICK_RATE });
+    // New clients regenerate full plants from the seed; tell them which ones are already eaten.
+    const plants: PlantTuple[] = state.food.filter((f) => f.kind !== 'carcass' && f.food < f.maxFood).map((f) => [f.id, this.sentPlants.get(f.id) ?? Math.ceil(f.food)]);
+    this.send(s, { t: 'welcome', protocol: PROTOCOL_VERSION, playerId: player.id, seed: this.seed, tick: state.tick, tickRate: TICK_RATE, plants });
   }
 }

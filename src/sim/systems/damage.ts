@@ -1,6 +1,7 @@
 import type { Dino, GameState } from '../types';
 import { findDino } from '../world';
 import { isInOwnBase, onPlayerDinoDeath } from '../players';
+import { addCarcassFor } from './feeding';
 
 /** Deal damage from `sourceDinoId` (may already be dead/gone). Dinos in their own base are immune. */
 export function applyDamage(state: GameState, target: Dino, amount: number, sourceDinoId: number): void {
@@ -11,5 +12,6 @@ export function applyDamage(state: GameState, target: Dino, amount: number, sour
   target.hp = 0;
   target.alive = false;
   state.events.push({ type: 'death', dinoId: target.id, x: target.x, y: target.y, team: target.team });
+  addCarcassFor(state, target);
   onPlayerDinoDeath(state, target, findDino(state, sourceDinoId));
 }

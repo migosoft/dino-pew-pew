@@ -8,13 +8,16 @@ import { resolveDinoContacts, resolveObstacles } from './systems/collision';
 import { selectFiringMounts, updateAim } from './systems/aiming';
 import { fireMounts } from './systems/firing';
 import { updateProjectiles } from './systems/projectiles';
+import { feed, updateFood } from './systems/feeding';
 
 /** A fresh, empty persistent match. Teams and players are added as people join. */
 export function createMatch(seed: number, worldOpts?: WorldGenOptions): GameState {
+  const world = generateWorld(seed, worldOpts);
   return {
     tick: 0,
     rng: makeRng(seed),
-    world: generateWorld(seed, worldOpts),
+    world,
+    food: world.food.map((f) => ({ ...f })),
     dinos: [],
     projectiles: [],
     events: [],
@@ -48,6 +51,7 @@ export function step(state: GameState, inputs: Map<number, InputCommand>, dt: nu
       // No input (e.g. connection hiccup): roll to a stop.
       moveDino(d, { throttle: 0, turn: 0, aimWorld: d, fire: false }, dt);
       resolveObstacles(state, d);
+      feed(state, d, false, dt);
       continue;
     }
 
@@ -55,10 +59,12 @@ export function step(state: GameState, inputs: Map<number, InputCommand>, dt: nu
     resolveObstacles(state, d);
     const errors = updateAim(d, getDino(d.kind), cmd.aimWorld, dt);
     if (cmd.fire) fireMounts(state, d, selectFiringMounts(errors));
+    feed(state, d, cmd.fire, dt);
   }
 
   resolveDinoContacts(state);
   for (const d of state.dinos) if (d.alive) resolveObstacles(state, d);
   updateProjectiles(state, dt);
+  updateFood(state, dt);
   state.dinos = state.dinos.filter((d) => d.alive);
 }

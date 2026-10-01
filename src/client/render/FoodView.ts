@@ -1,0 +1,69 @@
+import Phaser from 'phaser';
+import type { FoodSource } from '../../sim/types';
+import type { CarcassTuple, PlantTuple } from '../../net/protocol';
+import { frameForAngle } from './textures/pixel';
+import { CARCASS_DIRS } from './textures';
+import { DEPTH } from './depth';
+
+/** 0 = full, 1 = half eaten, 2 = nearly gone. */
+function stageOf(food: number, maxFood: number): 0 | 1 | 2 {
+  const f = maxFood > 0 ? food / maxFood : 0;
+  return f > 0.6 ? 0 : f > 0.25 ? 1 : 2;
+}
+
+/**
+ * Bushes, fern patches and carcasses. Plants come from the (client-generated) world and
+ * only their food level changes; carcasses come and go with the server's carcass list.
+ * Trees are food too but their look doesn't change.
+ */
+export class FoodView {
+  private plants = new Map<number, { src: FoodSource; sprite: Phaser.GameObjects.Image; stage: number }>();
+  private carcasses = new Map<number, { sprite: Phaser.GameObjects.Image; stage: number; species: string }>();
+
+  constructor(private scene: Phaser.Scene, food: FoodSource[]) {
+    for (const f of food) {
+      if (f.kind !== 'bush' && f.kind !== 'fern') continue;
+      const src = { ...f };
+      const sprite = scene.add.image(Math.round(f.x), Math.round(f.y), `${f.kind}_${f.variant}_0`);
+      // Bushes stand up (y-sorted); fern patches hug the ground.
+      sprite.setDepth(f.kind === 'bush' ? DEPTH.world + f.y : DEPTH.decal + 1);
+      this.plants.set(f.id, { src, sprite, stage: 0 });
+    }
+  }
+
+  setPlants(levels: PlantTuple[]): void {
+    for (const [id, food] of levels) {
+      const p = this.plants.get(id);
+      if (!p) continue;
+      p.src.food = food;
+      const stage = stageOf(food, p.src.maxFood);
+      if (stage !== p.stage) {
+        p.stage = stage;
+        p.sprite.setTexture(`${p.src.kind}_${p.src.variant}_${stage}`);
+      }
+    }
+  }
+
+  setCarcasses(list: CarcassTuple[]): void {
+    const seen = new Set<number>();
+    for (const [id, species, x, y, heading, food, maxFood] of list) {
+      seen.add(id);
+      const stage = stageOf(food, maxFood);
+      const kind = species === 'velociraptor' ? 'velociraptor' : 'triceratops';
+      let c = this.carcasses.get(id);
+      if (!c) {
+        const sprite = this.scene.add.image(x, y, `carcass_${kind}_${stage}`, frameForAngle(heading / 100, CARCASS_DIRS)).setDepth(DEPTH.decal + 2);
+        c = { sprite, stage, species: kind };
+        this.carcasses.set(id, c);
+      } else if (c.stage !== stage) {
+        c.stage = stage;
+        c.sprite.setTexture(`carcass_${kind}_${stage}`, c.sprite.frame.name);
+      }
+    }
+    for (const [id, c] of this.carcasses) {
+      if (seen.has(id)) continue;
+      c.sprite.destroy();
+      this.carcasses.delete(id);
+    }
+  }
+}

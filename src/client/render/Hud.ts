@@ -31,6 +31,7 @@ export class Hud {
   private stats: Phaser.GameObjects.BitmapText;
   private center: Phaser.GameObjects.BitmapText;
   private zone: Phaser.GameObjects.BitmapText;
+  private hint: Phaser.GameObjects.BitmapText;
   private board: Phaser.GameObjects.BitmapText;
   private feed: { text: Phaser.GameObjects.BitmapText; born: number }[] = [];
   private tags: Phaser.GameObjects.BitmapText[] = [];
@@ -44,6 +45,7 @@ export class Hud {
     this.stats = pixelText(scene, 6, 15, '');
     this.center = pixelText(scene, 0, 0, '').setOrigin(0.5).setScale(2);
     this.zone = pixelText(scene, 0, 0, '', 0x8ef06a).setOrigin(0.5, 0);
+    this.hint = pixelText(scene, 0, 0, '', 0xe8dcb8).setOrigin(0.5, 1);
     this.board = pixelText(scene, 0, 0, '').setOrigin(0.5, 0).setDepth(DEPTH.hud + 2);
     this.baseArrow = scene.add.image(0, 0, 'arrow').setScrollFactor(0).setDepth(DEPTH.hud).setVisible(false);
     const kb = scene.input.keyboard!;
@@ -88,6 +90,20 @@ export class Hud {
     // Safe zone hint.
     const inBase = d && teamInfo && (d.x - teamInfo.base.x) ** 2 + (d.y - teamInfo.base.y) ** 2 < BASE_RADIUS * BASE_RADIUS;
     this.zone.setText(inBase ? 'SAFE ZONE' : '').setPosition(Math.round(cam.width / 2), 6);
+
+    // Eating feedback, and a reminder of what this species eats when it's hurt.
+    let hint = '';
+    if (d?.eating) hint = 'EATING...';
+    else if (d && d.hp < d.maxHp * 0.7) {
+      const def = getDino(d.kind);
+      hint =
+        def.diet === 'carnivore'
+          ? 'HURT? STAND STILL AT A CARCASS TO EAT'
+          : def.diet === 'herbivore'
+            ? `HURT? STAND STILL AT ${def.size === 'large' ? 'BUSHES, FERNS OR TREES' : 'BUSHES OR FERNS'} TO EAT`
+            : 'HURT? STAND STILL AT PLANTS OR A CARCASS TO EAT';
+    }
+    this.hint.setText(hint).setTint(d?.eating ? 0x8ef06a : 0xe8dcb8).setPosition(Math.round(cam.width / 2), cam.height - 6);
 
     // Kill feed (top right), fading out.
     const now = this.scene.time.now;

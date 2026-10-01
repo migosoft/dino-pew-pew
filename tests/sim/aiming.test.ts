@@ -11,6 +11,10 @@ import { fireMounts } from '../../src/sim/systems/firing';
 // A test-only broadside dino: two back mounts facing left and right, no head.
 const SIDE_DINO: DinoDef = {
   kind: 'test-diplodocus',
+  diet: 'herbivore',
+  size: 'large',
+  eatRate: 8,
+  bounty: 50,
   radius: 14,
   maxSpeed: 40,
   reverseSpeed: 20,

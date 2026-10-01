@@ -11,6 +11,16 @@ const WEAPONS: Record<string, WeaponDef> = {
     projectileKind: 'bolt',
     projectileRadius: 2,
   },
+  raptorDart: {
+    id: 'raptorDart',
+    fireInterval: 0.22,
+    projectileSpeed: 300,
+    damage: 5,
+    spread: 0.04,
+    range: 210,
+    projectileKind: 'bolt',
+    projectileRadius: 1.5,
+  },
 };
 
 export function getWeapon(id: string): WeaponDef {

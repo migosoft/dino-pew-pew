@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { createMatch } from '../../src/sim/sim';
 import { addPlayer, createTeam } from '../../src/sim/players';
-import { decodeDino, encodeDino, encodeInput, parseClientMsg } from '../../src/net/protocol';
+import { carcassTuples, decodeDino, encodeDino, encodeInput, parseClientMsg } from '../../src/net/protocol';
+import { makeCarcass } from '../../src/sim/systems/feeding';
 
 describe('dino codec', () => {
   it('round-trips every field the client renders (within quantization)', () => {
     const s = createMatch(3);
     const p = addPlayer(s, createTeam(s)!.id, 'triceratops', 'A');
     const d = s.dinos[0];
-    Object.assign(d, { x: 123.456, y: 789.01, heading: -2.3456, speed: 33.33, headYaw: 0.321, hp: 57.4, hitFlash: 0.05, stride: 42.42 });
+    Object.assign(d, { x: 123.456, y: 789.01, heading: -2.3456, speed: 33.33, headYaw: 0.321, hp: 57.4, hitFlash: 0.05, stride: 42.42, eating: true });
     d.mounts[0].angle = -0.1234;
     const back = decodeDino(JSON.parse(JSON.stringify(encodeDino(d))));
     expect(back.id).toBe(d.id);
@@ -25,6 +26,22 @@ describe('dino codec', () => {
     expect(back.maxHp).toBe(d.maxHp);
     expect(back.hitFlash).toBeGreaterThan(0);
     expect(back.stride).toBeCloseTo(d.stride, 1);
+    expect(back.eating).toBe(true);
+    d.eating = false;
+    d.hitFlash = 0;
+    const plain = decodeDino(encodeDino(d));
+    expect([plain.eating, plain.hitFlash]).toEqual([false, 0]);
+  });
+
+  it('encodes carcasses with species, heading and food', () => {
+    const s = createMatch(3);
+    s.food = [makeCarcass(77, 'velociraptor', 10.4, 20.6, 1.234)];
+    const [t] = carcassTuples(s);
+    expect(t[0]).toBe(77);
+    expect(t[1]).toBe('velociraptor');
+    expect([t[2], t[3]]).toEqual([10, 21]);
+    expect(t[4] / 100).toBeCloseTo(1.23, 2);
+    expect(t[5]).toBe(t[6]);
   });
 });
 

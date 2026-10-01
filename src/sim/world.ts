@@ -22,6 +22,7 @@ export function createDino(state: GameState, kind: string, team: Team, x: number
     damageMul: 1,
     fireIntervalMul: 1,
     stride: 0,
+    eating: false,
     px: x,
     py: y,
     pheading: heading,

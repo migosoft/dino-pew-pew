@@ -83,6 +83,7 @@ export interface PlayerInfo {
 
 export interface SpeciesInfo {
   kind: string;
+  diet: string;
   hp: number;
   speed: number;
 }
@@ -106,6 +107,8 @@ export interface WelcomeMsg {
   seed: number;
   tick: number;
   tickRate: number;
+  /** Current food of every plant that is not full. */
+  plants: PlantTuple[];
 }
 
 /** Compact dino encoding: positions in 1/10 px, angles in milliradians. */
@@ -122,9 +125,15 @@ export type DinoTuple = [
   mounts: number[],
   hp: number,
   maxHp: number,
-  flash: number,
+  /** bit 0: hit flash, bit 1: eating */
+  flags: number,
   stride: number,
 ];
+
+/** A carcass as sent to clients (they appear and vanish at runtime). */
+export type CarcassTuple = [id: number, species: string, x: number, y: number, heading: number, food: number, maxFood: number];
+/** Remaining food of a world plant (plants are generated client-side from the seed). */
+export type PlantTuple = [id: number, food: number];
 
 export interface SnapshotMsg {
   t: 'snap';
@@ -135,6 +144,10 @@ export interface SnapshotMsg {
   players: PlayerInfo[];
   teams: TeamInfo[];
   events: TimedEvent[];
+  /** All current carcasses. */
+  carcasses: CarcassTuple[];
+  /** Plants whose (rounded) food level changed since the previous snapshot. */
+  plants: PlantTuple[];
 }
 
 export interface ErrorMsg {
@@ -160,14 +173,14 @@ export function encodeDino(d: Dino): DinoTuple {
     d.mounts.map((m) => q(m.angle, 1000)),
     Math.ceil(d.hp),
     d.maxHp,
-    d.hitFlash > 0 ? 1 : 0,
+    (d.hitFlash > 0 ? 1 : 0) | (d.eating ? 2 : 0),
     q(d.stride, 10),
   ];
 }
 
 /** Rebuild a render-ready Dino from a tuple. Server-only fields get neutral values. */
 export function decodeDino(t: DinoTuple): Dino {
-  const [id, kind, team, playerId, x, y, heading, speed, headYaw, mounts, hp, maxHp, flash, stride] = t;
+  const [id, kind, team, playerId, x, y, heading, speed, headYaw, mounts, hp, maxHp, flags, stride] = t;
   const d: Dino = {
     id,
     kind,
@@ -182,11 +195,12 @@ export function decodeDino(t: DinoTuple): Dino {
     hp,
     maxHp,
     alive: true,
-    hitFlash: flash ? 0.1 : 0,
+    hitFlash: flags & 1 ? 0.1 : 0,
     bumpCooldown: 0,
     damageMul: 1,
     fireIntervalMul: 1,
     stride: stride / 10,
+    eating: (flags & 2) !== 0,
     px: 0,
     py: 0,
     pheading: 0,
@@ -220,8 +234,21 @@ export function playerInfos(state: GameState): PlayerInfo[] {
   }));
 }
 
-/** Snapshot body without the per-recipient `ack`. */
-export function buildSnapshot(state: GameState, events: TimedEvent[]): Omit<SnapshotMsg, 'ack'> {
+export function carcassTuples(state: GameState): CarcassTuple[] {
+  return state.food
+    .filter((f) => f.kind === 'carcass')
+    .map((f) => [f.id, f.species ?? '', q(f.x, 1), q(f.y, 1), q(f.heading ?? 0, 100), Math.ceil(f.food), Math.round(f.maxFood)]);
+}
+
+/** Rounded food level of every plant, for change detection. */
+export function plantLevels(state: GameState): Map<number, number> {
+  const m = new Map<number, number>();
+  for (const f of state.food) if (f.kind !== 'carcass') m.set(f.id, Math.ceil(f.food));
+  return m;
+}
+
+/** Snapshot body without the per-recipient `ack`. `plants` = changed plant levels. */
+export function buildSnapshot(state: GameState, events: TimedEvent[], plants: PlantTuple[] = []): Omit<SnapshotMsg, 'ack'> {
   return {
     t: 'snap',
     tick: state.tick,
@@ -229,12 +256,14 @@ export function buildSnapshot(state: GameState, events: TimedEvent[]): Omit<Snap
     players: playerInfos(state),
     teams: teamInfos(state),
     events,
+    carcasses: carcassTuples(state),
+    plants,
   };
 }
 
 export function speciesInfo(kind: string): SpeciesInfo {
   const d = getDino(kind);
-  return { kind: d.kind, hp: d.hp, speed: d.maxSpeed };
+  return { kind: d.kind, diet: d.diet, hp: d.hp, speed: d.maxSpeed };
 }
 
 export function isKnownTeam(state: GameState, id: string): boolean {
