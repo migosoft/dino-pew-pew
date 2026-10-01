@@ -45,6 +45,7 @@ export class Effects {
     this.sparks.explode(18, x, y);
     this.dust.explode(14, x, y);
     this.scene.add.image(Math.round(x), Math.round(y), 'scorch').setDepth(DEPTH.decal);
-    this.scene.cameras.main.shake(120, 0.004);
+    const cam = this.scene.cameras.main;
+    if (cam.worldView.contains(x, y)) cam.shake(120, 0.004);
   }
 }

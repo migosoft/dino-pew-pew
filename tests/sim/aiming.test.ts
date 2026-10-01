@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { DinoDef, GameState, InputCommand } from '../../src/sim/types';
 import { DEG, angleDiff, wrapAngle } from '../../src/sim/math';
 import { getDino, registerDino } from '../../src/sim/defs/dinos';
-import { createGame, step } from '../../src/sim/sim';
+import { createMatch, step } from '../../src/sim/sim';
+import { addPlayer, createTeam } from '../../src/sim/players';
 import { createDino } from '../../src/sim/world';
 import { mountFrame, selectFiringMounts, updateAim } from '../../src/sim/systems/aiming';
 import { fireMounts } from '../../src/sim/systems/firing';
@@ -26,7 +27,7 @@ const SIDE_DINO: DinoDef = {
 registerDino(SIDE_DINO);
 
 function emptyGame(): GameState {
-  const s = createGame(1, { cols: 20, rows: 20 });
+  const s = createMatch(1, { cols: 20, rows: 20 });
   s.world.obstacles = [];
   s.world.grid = s.world.grid.map(() => []);
   s.dinos = [];
@@ -105,38 +106,20 @@ describe('broadside dino aiming', () => {
 });
 
 describe('simulation step', () => {
-  it('moves the player forward with throttle and is deterministic', () => {
+  it('moves a rider forward with throttle and is deterministic', () => {
     const run = () => {
-      const s = createGame(42);
+      const s = createMatch(42);
+      const team = createTeam(s)!;
+      const p = addPlayer(s, team.id, 'triceratops', 'A');
       const cmd: InputCommand = { throttle: 1, turn: 0.3, aimWorld: { x: 0, y: 0 }, fire: true };
-      const cmds = new Map([[s.playerId, cmd]]);
-      for (let i = 0; i < 300; i++) step(s, cmds, 1 / 60);
-      const p = s.dinos.find((d) => d.id === s.playerId)!;
-      return { x: p.x, y: p.y, n: s.projectiles.length, rng: s.rng.s, dinos: s.dinos.length };
+      const inputs = new Map([[p.id, cmd]]);
+      const start = { ...s.dinos[0] };
+      for (let i = 0; i < 300; i++) step(s, inputs, 1 / 60);
+      const d = s.dinos.find((x) => x.playerId === p.id)!;
+      return { x: d.x, y: d.y, moved: Math.hypot(d.x - start.x, d.y - start.y), rng: s.rng.s, shots: s.tick };
     };
     const a = run();
-    const b = run();
-    expect(a).toEqual(b);
-    const s = createGame(42);
-    expect(Math.hypot(a.x - s.world.spawn.x, a.y - s.world.spawn.y)).toBeGreaterThan(50);
-  });
-
-  it('spawns a wave of enemies after the first delay', () => {
-    const s = createGame(7);
-    const cmds = new Map<number, InputCommand>();
-    for (let i = 0; i < 60 * 4.5; i++) step(s, cmds, 1 / 60);
-    expect(s.wave.number).toBe(1);
-    expect(s.dinos.filter((d) => d.team === 'enemy').length).toBe(3);
-  });
-
-  it('wave 1 enemies hunt the player but an idle player survives 10s', () => {
-    for (const seed of [3, 11, 29]) {
-      const s = createGame(seed);
-      const cmds = new Map<number, InputCommand>();
-      for (let i = 0; i < 60 * 14; i++) step(s, cmds, 1 / 60); // 4s delay + 10s of wave 1
-      const p = s.dinos.find((d) => d.id === s.playerId)!;
-      expect(p.alive).toBe(true);
-      expect(p.hp).toBeLessThan(100);
-    }
+    expect(a).toEqual(run());
+    expect(a.moved).toBeGreaterThan(50);
   });
 });

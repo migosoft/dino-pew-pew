@@ -1,5 +1,5 @@
 // Core simulation types. Nothing in src/sim may import Phaser: the simulation
-// must stay deterministic and runnable headless (tests, future netcode server).
+// is authoritative on the game server and must stay deterministic and headless.
 
 export interface Vec2 {
   x: number;
@@ -17,7 +17,9 @@ export interface InputCommand {
   fire: boolean;
 }
 
-export type Team = 'player' | 'enemy';
+/** A rider team id (see TeamState), or WILD_TEAM for riderless wild dinosaurs. */
+export type Team = string;
+export const WILD_TEAM = 'wild';
 
 /** An articulated head that can yaw relative to the body (e.g. Triceratops). */
 export interface HeadDef {
@@ -82,20 +84,12 @@ export interface MountState {
   cooldown: number;
 }
 
-export interface AiState {
-  mode: 'approach' | 'engage' | 'sidestep';
-  timer: number;
-  sideDir: number;
-  stuckTime: number;
-  aimOffset: Vec2;
-  aimTimer: number;
-  preferredRange: number;
-}
-
 export interface Dino {
   id: number;
   kind: string;
   team: Team;
+  /** Rider's player id, or null for a riderless dino. */
+  playerId: number | null;
   x: number;
   y: number;
   /** World heading, radians. 0 = +x (east), +PI/2 = +y (south). */
@@ -110,12 +104,11 @@ export interface Dino {
   /** Seconds the hit flash remains visible. */
   hitFlash: number;
   bumpCooldown: number;
-  /** Multipliers applied by wave scaling. */
+  /** Stat multipliers (upgrades). */
   damageMul: number;
   fireIntervalMul: number;
   /** Distance travelled, used to animate legs. */
   stride: number;
-  ai?: AiState;
   // Previous-tick values, for render interpolation.
   px: number;
   py: number;
@@ -177,22 +170,48 @@ export interface World {
   gridCell: number;
   gridCols: number;
   gridRows: number;
-  spawn: Vec2;
+  /** Team base camp centers, one per possible team slot (kept clear of obstacles). */
+  bases: Vec2[];
 }
 
 export type GameEvent =
-  | { type: 'shot'; dinoId: number; mount: number; x: number; y: number; angle: number }
-  | { type: 'hit'; x: number; y: number; targetId: number }
-  | { type: 'impact'; x: number; y: number }
+  | {
+      type: 'shot';
+      dinoId: number;
+      mount: number;
+      projectileId: number;
+      team: Team;
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+      range: number;
+    }
+  | { type: 'hit'; projectileId: number; x: number; y: number; targetId: number }
+  | { type: 'impact'; projectileId: number; x: number; y: number }
   | { type: 'death'; dinoId: number; x: number; y: number; team: Team }
-  | { type: 'waveStart'; wave: number }
-  | { type: 'waveCleared'; wave: number }
-  | { type: 'gameOver' };
+  | { type: 'kill'; killer: number | null; victim: number | null; victimKind: string }
+  | { type: 'spawn'; playerId: number; dinoId: number };
 
-export interface WaveState {
-  number: number;
-  phase: 'intermission' | 'active';
-  timer: number;
+export interface TeamState {
+  id: Team;
+  /** Index into the base slots and team color palettes (0..MAX_TEAMS-1). */
+  slot: number;
+  base: Vec2;
+  /** Seconds the team has had no players; it dissolves after a timeout. */
+  emptyFor: number;
+}
+
+export interface PlayerState {
+  id: number;
+  name: string;
+  team: Team;
+  kind: string;
+  /** The rider's current dino, or null while waiting to respawn. */
+  dinoId: number | null;
+  respawn: number;
+  kills: number;
+  deaths: number;
 }
 
 export interface GameState {
@@ -203,10 +222,8 @@ export interface GameState {
   projectiles: Projectile[];
   events: GameEvent[];
   nextId: number;
-  playerId: number;
-  wave: WaveState;
-  score: number;
-  gameOver: boolean;
+  teams: TeamState[];
+  players: PlayerState[];
 }
 
 export const TICK_RATE = 60;

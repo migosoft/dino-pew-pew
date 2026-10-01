@@ -17,8 +17,10 @@ export interface DinoPalette {
   tunicLight: string;
 }
 
-export const PALETTES: Record<'player' | 'enemy', DinoPalette> = {
-  player: {
+/** One palette per team slot (index = TeamState.slot). Tunic color = team color. */
+export const TEAM_PALETTES: DinoPalette[] = [
+  {
+    // GREEN
     dark: '#2b4a2c',
     base: '#4d7c3c',
     light: '#7aa951',
@@ -28,10 +30,11 @@ export const PALETTES: Record<'player' | 'enemy', DinoPalette> = {
     frillLight: '#eaa04c',
     saddle: '#6b4226',
     saddleLight: '#9a6638',
-    tunic: '#2f6db0',
-    tunicLight: '#5fa0e0',
+    tunic: '#2f8a34',
+    tunicLight: '#7ad06a',
   },
-  enemy: {
+  {
+    // RED
     dark: '#3c2420',
     base: '#7a4632',
     light: '#a9714a',
@@ -44,7 +47,35 @@ export const PALETTES: Record<'player' | 'enemy', DinoPalette> = {
     tunic: '#a8282e',
     tunicLight: '#e05048',
   },
-};
+  {
+    // GOLD
+    dark: '#4a3a1c',
+    base: '#9a7a34',
+    light: '#c8a650',
+    belly: '#d8bc78',
+    frillDark: '#2e5a5a',
+    frill: '#3f8a84',
+    frillLight: '#6cc0b4',
+    saddle: '#5a2a1a',
+    saddleLight: '#8a4a2a',
+    tunic: '#c89a20',
+    tunicLight: '#f0d060',
+  },
+  {
+    // BLUE
+    dark: '#24303e',
+    base: '#4a5e74',
+    light: '#7890a8',
+    belly: '#90a4b8',
+    frillDark: '#7a2a4a',
+    frill: '#b04a6e',
+    frillLight: '#e07898',
+    saddle: '#3a2a20',
+    saddleLight: '#6a5038',
+    tunic: '#2850a8',
+    tunicLight: '#6890e8',
+  },
+];
 
 const OUTLINE = '#17110d';
 const BONE = '#efe4c2';

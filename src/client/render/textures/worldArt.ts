@@ -268,3 +268,31 @@ export function drawArrow(): HTMLCanvasElement {
   outline(c, OUTLINE);
   return c.canvas;
 }
+
+/** Team camp totem: wooden pole on a stone footing with a banner in the team color. */
+export function drawTotem(banner: string, bannerLight: string): HTMLCanvasElement {
+  const c = makeCanvas(14, 26);
+  ellipse(c, 7, 22, 5, 3, (nx, ny, x, y) => litShade(nx, ny, x, y, '#3a3631', '#5e5850', '#8a8378'));
+  rect(c, 6, 3, 2, 19, '#5e3b22');
+  rect(c, 6, 3, 1, 19, '#86593a');
+  // Banner hanging from a crossbar.
+  rect(c, 3, 4, 8, 1, '#4a3020');
+  for (let y = 5; y < 12; y++) {
+    const w = y < 10 ? 6 : 6 - (y - 9) * 2;
+    rect(c, 4 + (6 - w) / 2, y, w, 1, y < 7 ? bannerLight : banner);
+  }
+  // Skull on top.
+  rect(c, 5, 0, 4, 3, '#efe4c2');
+  px(c, 6, 1, '#17110d');
+  px(c, 8, 1, '#17110d');
+  outline(c, OUTLINE);
+  return c.canvas;
+}
+
+/** Unclaimed campsite marker stone. */
+export function drawCampStone(): HTMLCanvasElement {
+  const c = makeCanvas(10, 8);
+  ellipse(c, 5, 4, 4, 3, (nx, ny, x, y) => litShade(nx, ny, x, y, '#3a3631', '#5e5850', '#8a8378'));
+  outline(c, OUTLINE);
+  return c.canvas;
+}

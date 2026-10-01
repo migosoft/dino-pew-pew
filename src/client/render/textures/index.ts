@@ -1,11 +1,13 @@
 import Phaser from 'phaser';
 import { rotationStrip, silhouette } from './pixel';
-import { PALETTES, drawHornCannon, drawRider, drawTriceratopsBody, drawTriceratopsHead } from './dinoArt';
+import { TEAM_PALETTES, drawHornCannon, drawRider, drawTriceratopsBody, drawTriceratopsHead } from './dinoArt';
 import {
   CANOPY_SIZES,
   ROCK_SIZES,
   drawArrow,
   drawBolt,
+  drawCampStone,
+  drawTotem,
   drawCanopy,
   drawDot,
   drawMuzzleFlash,
@@ -33,19 +35,23 @@ function addImage(scene: Phaser.Scene, key: string, canvas: HTMLCanvasElement): 
 }
 
 export function generateTextures(scene: Phaser.Scene): void {
-  for (const team of ['player', 'enemy'] as const) {
-    const pal = PALETTES[team];
+  // Per-team textures are keyed by palette: "t0".."t3" (see client/teams.ts).
+  TEAM_PALETTES.forEach((pal, slot) => {
+    const key = `t${slot}`;
     for (const pose of [0, 1] as const) {
       const body = drawTriceratopsBody(pal, pose);
-      addStrip(scene, `triceratops_body_${team}_${pose}`, body, DIRS);
-      if (team === 'player') addStrip(scene, `triceratops_shadow_${pose}`, silhouette(body, 'rgba(0,0,0,0.32)'), DIRS);
+      addStrip(scene, `triceratops_body_${key}_${pose}`, body, DIRS);
+      if (slot === 0) addStrip(scene, `triceratops_shadow_${pose}`, silhouette(body, 'rgba(0,0,0,0.32)'), DIRS);
     }
-    addStrip(scene, `triceratops_head_${team}`, drawTriceratopsHead(pal), DIRS);
-    addStrip(scene, `rider_${team}`, drawRider(pal), DIRS);
-  }
+    addStrip(scene, `triceratops_head_${key}`, drawTriceratopsHead(pal), DIRS);
+    addStrip(scene, `rider_${key}`, drawRider(pal), DIRS);
+    addImage(scene, `totem_${key}`, drawTotem(pal.tunic, pal.tunicLight));
+  });
+  addImage(scene, 'campStone', drawCampStone());
   addStrip(scene, 'weapon_hornCannon', drawHornCannon(), DIRS);
-  addStrip(scene, 'bolt_player', drawBolt('#fff6b0', '#ffb030'), BOLT_DIRS);
-  addStrip(scene, 'bolt_enemy', drawBolt('#ffd0c0', '#ff4a2c'), BOLT_DIRS);
+  // Bolts: your own team's shots are warm yellow, everyone else's are red.
+  addStrip(scene, 'bolt_friendly', drawBolt('#fff6b0', '#ffb030'), BOLT_DIRS);
+  addStrip(scene, 'bolt_hostile', drawBolt('#ffd0c0', '#ff4a2c'), BOLT_DIRS);
 
   for (const r of ROCK_SIZES) for (let v = 0; v < 3; v++) addImage(scene, `rock_${r}_${v}`, drawRock(r, v));
   for (const R of CANOPY_SIZES) {

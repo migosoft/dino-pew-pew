@@ -1,4 +1,4 @@
-import { Tile, type Obstacle, type World } from './types';
+import { Tile, type Obstacle, type Vec2, type World } from './types';
 import { fbm } from './noise';
 import { makeRng, rand, randInt, randRange } from './rng';
 import { indexObstacles } from './world';
@@ -9,12 +9,26 @@ export interface WorldGenOptions {
   tileSize?: number;
 }
 
-const SPAWN_CLEAR = 120;
+/** Obstacle-free radius around each base camp. */
+export const BASE_CLEAR = 140;
+/** Distance of base camps from the map edge. */
+const BASE_INSET = 260;
+
+/** Base slots: diagonal opposites first so the first two teams start far apart. */
+export function baseSlots(width: number, height: number): Vec2[] {
+  const a = BASE_INSET;
+  return [
+    { x: a, y: a },
+    { x: width - a, y: height - a },
+    { x: width - a, y: a },
+    { x: a, y: height - a },
+  ];
+}
 
 /** Deterministically build terrain and obstacles from a seed. */
 export function generateWorld(seed: number, opts: WorldGenOptions = {}): World {
-  const cols = opts.cols ?? 96;
-  const rows = opts.rows ?? 96;
+  const cols = opts.cols ?? 128;
+  const rows = opts.rows ?? 128;
   const tileSize = opts.tileSize ?? 16;
   const width = cols * tileSize;
   const height = rows * tileSize;
@@ -34,7 +48,8 @@ export function generateWorld(seed: number, opts: WorldGenOptions = {}): World {
     }
   }
 
-  const spawn = { x: width / 2, y: height / 2 };
+  const bases = baseSlots(width, height);
+  const nearBase = (x: number, y: number) => bases.some((b) => (b.x - x) ** 2 + (b.y - y) ** 2 < BASE_CLEAR * BASE_CLEAR);
   const obstacles: Obstacle[] = [];
   let id = 1;
   const fits = (x: number, y: number, r: number): boolean => {
@@ -70,7 +85,7 @@ export function generateWorld(seed: number, opts: WorldGenOptions = {}): World {
     for (let gx = 1; gx < Math.floor(width / cell) - 1; gx++) {
       const x = gx * cell + randRange(rng, 4, cell - 4);
       const y = gy * cell + randRange(rng, 4, cell - 4);
-      if ((x - spawn.x) ** 2 + (y - spawn.y) ** 2 < SPAWN_CLEAR * SPAWN_CLEAR) continue;
+      if (nearBase(x, y)) continue;
       const grove = fbm(x / 260, y / 260, seed + 101, 3);
       const rocky = fbm(x / 200, y / 200, seed + 202, 3);
       const roll = rand(rng);
@@ -98,7 +113,7 @@ export function generateWorld(seed: number, opts: WorldGenOptions = {}): World {
     gridCell: 64,
     gridCols: 0,
     gridRows: 0,
-    spawn,
+    bases,
   };
   indexObstacles(world);
   return world;

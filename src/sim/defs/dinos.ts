@@ -41,3 +41,7 @@ export function getDino(kind: string): DinoDef {
 export function registerDino(def: DinoDef): void {
   DINOS[def.kind] = def;
 }
+
+export function listDinos(): DinoDef[] {
+  return Object.values(DINOS).filter((d) => !d.kind.startsWith('test-'));
+}

@@ -14,16 +14,19 @@ export function fireMounts(state: GameState, d: Dino, mounts: number[]): void {
     const barrel = mountFrame(d, def, i).angle;
     const angle = barrel + randRange(state.rng, -w.spread, w.spread);
     const muzzle = muzzlePoint(d, def, i);
+    const id = state.nextId++;
+    const vx = Math.cos(angle) * w.projectileSpeed;
+    const vy = Math.sin(angle) * w.projectileSpeed;
     state.projectiles.push({
-      id: state.nextId++,
+      id,
       ownerId: d.id,
       team: d.team,
       x: muzzle.x,
       y: muzzle.y,
       px: muzzle.x,
       py: muzzle.y,
-      vx: Math.cos(angle) * w.projectileSpeed,
-      vy: Math.sin(angle) * w.projectileSpeed,
+      vx,
+      vy,
       traveled: 0,
       range: w.range,
       damage: w.damage * d.damageMul,
@@ -32,6 +35,6 @@ export function fireMounts(state: GameState, d: Dino, mounts: number[]): void {
       alive: true,
     });
     st.cooldown = w.fireInterval * d.fireIntervalMul;
-    state.events.push({ type: 'shot', dinoId: d.id, mount: i, x: muzzle.x, y: muzzle.y, angle });
+    state.events.push({ type: 'shot', dinoId: d.id, mount: i, projectileId: id, team: d.team, x: muzzle.x, y: muzzle.y, vx, vy, range: w.range });
   }
 }

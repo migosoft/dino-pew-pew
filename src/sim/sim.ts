@@ -2,43 +2,37 @@ import type { GameState, InputCommand } from './types';
 import { getDino } from './defs/dinos';
 import { makeRng } from './rng';
 import { generateWorld, type WorldGenOptions } from './worldgen';
-import { createDino } from './world';
-import { computeAiCommand } from './ai';
-import { FIRST_WAVE_DELAY, updateWaves } from './waves';
+import { updatePlayers } from './players';
 import { moveDino } from './systems/movement';
 import { resolveDinoContacts, resolveObstacles } from './systems/collision';
 import { selectFiringMounts, updateAim } from './systems/aiming';
 import { fireMounts } from './systems/firing';
 import { updateProjectiles } from './systems/projectiles';
 
-export function createGame(seed: number, worldOpts?: WorldGenOptions): GameState {
-  const world = generateWorld(seed, worldOpts);
-  const state: GameState = {
+/** A fresh, empty persistent match. Teams and players are added as people join. */
+export function createMatch(seed: number, worldOpts?: WorldGenOptions): GameState {
+  return {
     tick: 0,
     rng: makeRng(seed),
-    world,
+    world: generateWorld(seed, worldOpts),
     dinos: [],
     projectiles: [],
     events: [],
     nextId: 1,
-    playerId: 0,
-    wave: { number: 0, phase: 'intermission', timer: FIRST_WAVE_DELAY },
-    score: 0,
-    gameOver: false,
+    teams: [],
+    players: [],
   };
-  const player = createDino(state, 'triceratops', 'player', world.spawn.x, world.spawn.y, -Math.PI / 2);
-  state.playerId = player.id;
-  return state;
 }
 
 /**
- * Advance the simulation one fixed tick. `commands` holds input for human-controlled
- * dinos keyed by dino id (today: the local player; later: remote players). Dinos with
- * AI state compute their own command. Events from this tick are left in state.events.
+ * Advance the simulation one fixed tick. `inputs` holds the latest command per
+ * player id; ridden dinos without input coast. Events from this tick are left in
+ * state.events.
  */
-export function step(state: GameState, commands: Map<number, InputCommand>, dt: number): void {
+export function step(state: GameState, inputs: Map<number, InputCommand>, dt: number): void {
   state.events = [];
   state.tick++;
+  updatePlayers(state, dt);
 
   for (const d of state.dinos) {
     if (!d.alive) continue;
@@ -49,8 +43,13 @@ export function step(state: GameState, commands: Map<number, InputCommand>, dt: 
     d.bumpCooldown = Math.max(0, d.bumpCooldown - dt);
     for (const m of d.mounts) m.cooldown = Math.max(0, m.cooldown - dt);
 
-    const cmd = d.ai ? computeAiCommand(state, d, dt) : commands.get(d.id);
-    if (!cmd) continue;
+    const cmd = d.playerId !== null ? inputs.get(d.playerId) : undefined;
+    if (!cmd) {
+      // No input (e.g. connection hiccup): roll to a stop.
+      moveDino(d, { throttle: 0, turn: 0, aimWorld: d, fire: false }, dt);
+      resolveObstacles(state, d);
+      continue;
+    }
 
     moveDino(d, cmd, dt);
     resolveObstacles(state, d);
@@ -61,7 +60,5 @@ export function step(state: GameState, commands: Map<number, InputCommand>, dt: 
   resolveDinoContacts(state);
   for (const d of state.dinos) if (d.alive) resolveObstacles(state, d);
   updateProjectiles(state, dt);
-  // Dead enemies leave the sim (renderer reacts to the death event); the player stays for the game-over view.
-  state.dinos = state.dinos.filter((d) => d.alive || d.id === state.playerId);
-  updateWaves(state, dt);
+  state.dinos = state.dinos.filter((d) => d.alive);
 }

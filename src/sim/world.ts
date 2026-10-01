@@ -1,12 +1,13 @@
-import type { Dino, GameState, Obstacle, Team, World } from './types';
+import type { Dino, GameState, Obstacle, PlayerState, Team, TeamState, World } from './types';
 import { getDino } from './defs/dinos';
 
-export function createDino(state: GameState, kind: string, team: Team, x: number, y: number, heading = 0): Dino {
+export function createDino(state: GameState, kind: string, team: Team, x: number, y: number, heading = 0, playerId: number | null = null): Dino {
   const def = getDino(kind);
   const d: Dino = {
     id: state.nextId++,
     kind,
     team,
+    playerId,
     x,
     y,
     heading,
@@ -34,8 +35,14 @@ export function findDino(state: GameState, id: number): Dino | undefined {
   return undefined;
 }
 
-export function getPlayer(state: GameState): Dino | undefined {
-  return findDino(state, state.playerId);
+export function findPlayer(state: GameState, id: number): PlayerState | undefined {
+  for (const p of state.players) if (p.id === id) return p;
+  return undefined;
+}
+
+export function findTeam(state: GameState, id: string): TeamState | undefined {
+  for (const t of state.teams) if (t.id === id) return t;
+  return undefined;
 }
 
 /** Build the obstacle spatial hash. */

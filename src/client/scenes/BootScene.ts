@@ -8,6 +8,6 @@ export class BootScene extends Phaser.Scene {
 
   create(): void {
     generateTextures(this);
-    this.scene.start('game', { seed: (Math.random() * 2 ** 31) >>> 0, intro: true });
+    this.scene.start('join', {});
   }
 }

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { InputCommand } from '../../src/sim/types';
 import { generateWorld } from '../../src/sim/worldgen';
-import { createGame } from '../../src/sim/sim';
+import { createMatch } from '../../src/sim/sim';
+import { addPlayer, createTeam } from '../../src/sim/players';
+import { BASE_CLEAR } from '../../src/sim/worldgen';
 import { isFree } from '../../src/sim/world';
 import { moveDino } from '../../src/sim/systems/movement';
 import { resolveObstacles } from '../../src/sim/systems/collision';
@@ -19,17 +21,19 @@ describe('world generation', () => {
     expect(generateWorld(1).obstacles).not.toEqual(generateWorld(2).obstacles);
   });
 
-  it('has rocks and trees and a clear spawn', () => {
+  it('has rocks and trees and four clear base camps', () => {
     const w = generateWorld(99);
     expect(w.obstacles.some((o) => o.kind === 'rock')).toBe(true);
     expect(w.obstacles.some((o) => o.kind === 'tree')).toBe(true);
-    expect(isFree(w, w.spawn.x, w.spawn.y, 60)).toBe(true);
+    expect(w.bases).toHaveLength(4);
+    for (const b of w.bases) expect(isFree(w, b.x, b.y, BASE_CLEAR - 30)).toBe(true);
   });
 });
 
 describe('collisions', () => {
   function gameWithRockAhead() {
-    const s = createGame(5);
+    const s = createMatch(5);
+    addPlayer(s, createTeam(s)!.id, 'triceratops', 'A');
     const p = s.dinos[0];
     const rock = { id: 999, kind: 'rock' as const, x: p.x + 60, y: p.y, r: 12, variant: 0, canopyR: 0 };
     s.world.obstacles = [rock];
@@ -52,7 +56,7 @@ describe('collisions', () => {
 
   it('projectiles are stopped by rocks', () => {
     const { s, p, rock } = gameWithRockAhead();
-    s.projectiles.push({ id: 1, ownerId: p.id, team: 'player', x: p.x + 20, y: p.y, px: 0, py: 0, vx: 270, vy: 0, traveled: 0, range: 300, damage: 10, radius: 2, kind: 'bolt', alive: true });
+    s.projectiles.push({ id: 1, ownerId: p.id, team: p.team, x: p.x + 20, y: p.y, px: 0, py: 0, vx: 270, vy: 0, traveled: 0, range: 300, damage: 10, radius: 2, kind: 'bolt', alive: true });
     for (let i = 0; i < 30; i++) updateProjectiles(s, 1 / 60);
     expect(s.projectiles).toHaveLength(0);
     expect(rock).toBeDefined();
