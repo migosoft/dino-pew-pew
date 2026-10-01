@@ -1,6 +1,6 @@
 import { checker, ellipse, line, litShade, makeCanvas, outline, px, rect, type PixCanvas } from './pixel';
 
-// Procedural top-down Triceratops, rider and horn cannon. All art faces +x (east);
+// Procedural top-down Triceratops, its rider armor, rider and side cannons. All art faces +x (east);
 // rotation frames are produced afterwards.
 
 export interface DinoPalette {
@@ -202,20 +202,107 @@ export function drawRider(p: DinoPalette): HTMLCanvasElement {
   return c.canvas;
 }
 
-/** Bronze horn-mounted cannon. Canvas center = swivel pivot; barrel points +x. */
-export function drawHornCannon(): HTMLCanvasElement {
-  const c = makeCanvas(28, 28);
-  const cx = 14;
-  const cy = 14;
-  // Breech block.
-  rect(c, cx - 3, cy - 2, 5, 4, '#6e4a22');
-  rect(c, cx - 3, cy - 2, 5, 1, '#b07c3a');
-  // Barrel.
-  rect(c, cx + 2, cy - 1, 9, 2, '#7a7f86');
-  rect(c, cx + 2, cy - 1, 9, 1, '#c3c9cf');
-  // Muzzle ring.
-  rect(c, cx + 10, cy - 1.5, 2, 3, '#4e5257');
-  px(c, cx + 10, cy - 2, '#9aa0a6');
+// Gunmetal for armor plates and guns (shared by all teams; team color goes on trim).
+const METAL_DARK = '#3a3f47';
+const METAL = '#6b7480';
+const METAL_LIGHT = '#a8b2bd';
+const RIVET = '#dde3e8';
+
+/**
+ * Armored howdah strapped over the back of a ridden Triceratops, with struts out to both
+ * flanks where the side cannons hang. Same canvas and pivot as the body.
+ */
+export function drawTriceratopsSaddleArmor(p: DinoPalette): HTMLCanvasElement {
+  const c = makeCanvas(48, 48);
+  const cx = 24;
+  const cy = 24;
+  // Struts out to the cannon hangers on both flanks.
+  for (const side of [-1, 1]) {
+    const y0 = side < 0 ? cy - 11 : cy + 8;
+    rect(c, cx, y0, 3, 4, METAL);
+    rect(c, cx, y0, 1, 4, METAL_LIGHT);
+    rect(c, cx + 2, y0, 1, 4, METAL_DARK);
+  }
+  // Boxy shell: x -10..5, y -7..7, corners cut, lit from the upper left.
+  const x0 = -10;
+  const x1 = 5;
+  for (let y = -7; y <= 7; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const corner = (x === x0 || x === x1) && Math.abs(y) === 7;
+      if (corner) continue;
+      let col = METAL;
+      if (y === -7 || x === x0) col = METAL_LIGHT;
+      else if (y === 7 || x === x1) col = METAL_DARK;
+      px(c, cx + x, cy + y, col);
+    }
+  }
+  // Team-colored trim along both flanks and a seam between the front and rear plates.
+  for (const y of [-5, 5]) {
+    rect(c, cx + x0 + 1, cy + y, x1 - x0 - 1, 1, y < 0 ? p.tunicLight : p.tunic);
+  }
+  rect(c, cx - 6, cy - 6, 1, 13, METAL_DARK);
+  // Rivets in the plate corners.
+  for (const [rx, ry] of [
+    [-9, -6],
+    [-9, 6],
+    [-7, -6],
+    [-7, 6],
+    [4, -6],
+    [4, 6],
+  ]) {
+    px(c, cx + rx, cy + ry, RIVET);
+  }
+  // Leather seat for the rider.
+  rect(c, cx - 4, cy - 3, 6, 6, p.saddle);
+  rect(c, cx - 4, cy - 3, 6, 1, p.saddleLight);
+  // Raised front shield protecting the rider.
+  rect(c, cx + 3, cy - 4, 2, 8, METAL_LIGHT);
+  rect(c, cx + 4, cy - 4, 1, 8, METAL);
+  outline(c, OUTLINE);
+  return c.canvas;
+}
+
+/** Face plate and frill shield of a ridden Triceratops. Same canvas and pivot as the head. */
+export function drawTriceratopsHeadArmor(p: DinoPalette): HTMLCanvasElement {
+  const c = makeCanvas(36, 36);
+  const cx = 18;
+  const cy = 18;
+  // Frill shield in team color with a metal rim, studded in the middle.
+  ellipse(c, cx, cy, 3, 7, (nx, ny, x, y) => {
+    if (nx * nx + ny * ny > 0.68) return litShade(nx, ny, x, y, METAL_DARK, METAL, METAL_LIGHT);
+    return litShade(nx, ny, x, y, p.tunic, p.tunic, p.tunicLight);
+  });
+  px(c, cx, cy - 3, RIVET);
+  px(c, cx, cy + 3, RIVET);
+  // Gunmetal face plate over the snout, leaving the beak and eyes free.
+  ellipse(c, cx + 9.5, cy, 4, 2.6, (nx, ny, x, y) => (nx > 0.85 ? null : litShade(nx, ny, x, y, METAL_DARK, METAL, METAL_LIGHT)));
+  rect(c, cx + 7, cy, 5, 1, METAL_LIGHT);
+  // Horns go through holes in the plate.
+  line(c, cx + 8, cy - 3, cx + 16, cy - 5, BONE, 1);
+  line(c, cx + 8, cy + 3, cx + 16, cy + 5, BONE, 1);
+  line(c, cx + 12, cy, cx + 13, cy, BONE, 1);
+  outline(c, OUTLINE);
+  return c.canvas;
+}
+
+/** Heavy side-hung cannon. Canvas center = pivot (middle of the breech); barrel points +x. */
+export function drawSideCannon(): HTMLCanvasElement {
+  const c = makeCanvas(32, 32);
+  const cx = 16;
+  const cy = 16;
+  // Boxy breech.
+  rect(c, cx - 3, cy - 2, 6, 5, METAL);
+  rect(c, cx - 3, cy - 2, 6, 1, METAL_LIGHT);
+  rect(c, cx - 3, cy + 2, 6, 1, METAL_DARK);
+  px(c, cx - 2, cy, RIVET);
+  px(c, cx + 1, cy, RIVET);
+  // Long barrel with two cooling rings.
+  rect(c, cx + 3, cy - 1, 10, 2, METAL);
+  rect(c, cx + 3, cy - 1, 10, 1, METAL_LIGHT);
+  for (const rx of [5, 9]) rect(c, cx + rx, cy - 2, 1, 4, METAL_DARK);
+  // Heavy muzzle.
+  rect(c, cx + 13, cy - 2, 2, 4, METAL_DARK);
+  px(c, cx + 13, cy - 2, METAL_LIGHT);
   outline(c, OUTLINE);
   return c.canvas;
 }

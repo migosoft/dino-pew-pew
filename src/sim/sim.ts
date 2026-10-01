@@ -69,10 +69,11 @@ export function step(state: GameState, inputs: Map<number, InputCommand>, dt: nu
 
     moveDino(d, cmd, dt);
     resolveObstacles(state, d);
-    const errors = updateAim(d, getDino(d.kind), cmd.aimWorld, dt);
+    const def = getDino(d.kind);
+    const errors = updateAim(d, def, cmd.aimWorld, dt);
     // Only riders operate the mounted weapons.
     const firing = cmd.fire && d.playerId !== null;
-    if (firing) fireMounts(state, d, selectFiringMounts(errors));
+    if (firing) fireMounts(state, d, def.volley ? def.mounts.map((_, i) => i) : selectFiringMounts(errors));
     feed(state, d, firing, dt);
   }
 

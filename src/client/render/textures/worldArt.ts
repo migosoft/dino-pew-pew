@@ -296,3 +296,44 @@ export function drawCampStone(): HTMLCanvasElement {
   outline(c, OUTLINE);
   return c.canvas;
 }
+
+/** Hand-drawn claw: b/d = talon light/dark, l/g/G = scaly foot light/base/dark. */
+const CLAW_MAP = [
+  'b...............',
+  'bb....b.........',
+  '.bd....bb.......',
+  '.bd.....bd......',
+  '..bd....bd......',
+  '..bdd...bd..b...',
+  '...bd..bdd..bd..',
+  '....bdgllg.bdd..',
+  'b...gglllggbd...',
+  'bb.gllllgggG....',
+  '.bdglllgggGG....',
+  '..bdggggggGG....',
+  '...ggggggGGG....',
+  '....gggGGGG.....',
+  '.....GGGG.......',
+];
+
+/**
+ * Mouse cursor for menus: a dino foot with three hooked talons pointing up-left.
+ * Drawn at 16x16 and doubled (32x32 is the largest cursor every OS accepts).
+ * The tip of the front talon is the hotspot, at (2, 2) after scaling.
+ */
+export function drawClawCursor(hover: boolean): HTMLCanvasElement {
+  const c = makeCanvas(16, 16);
+  const colors: Record<string, string> = {
+    b: hover ? '#ffe066' : '#efe4c2',
+    d: hover ? '#d0a030' : '#b5a57c',
+    l: '#7aa951',
+    g: '#4d7c3c',
+    G: '#2b4a2c',
+  };
+  // Offset by one pixel so the outline fits around the talon tip.
+  CLAW_MAP.forEach((row, y) => [...row].forEach((ch, x) => ch !== '.' && px(c, x + 1, y + 1, colors[ch])));
+  outline(c, OUTLINE);
+  const big = makeCanvas(32, 32);
+  big.ctx.drawImage(c.canvas, 0, 0, 32, 32);
+  return big.canvas;
+}

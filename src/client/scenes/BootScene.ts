@@ -8,6 +8,6 @@ export class BootScene extends Phaser.Scene {
 
   create(): void {
     generateTextures(this);
-    this.scene.start('join', {});
+    this.scene.start(new URLSearchParams(location.search).has('preview') ? 'preview' : 'join', {});
   }
 }

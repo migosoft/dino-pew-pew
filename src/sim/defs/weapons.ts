@@ -1,11 +1,12 @@
 import type { WeaponDef } from '../types';
 
 const WEAPONS: Record<string, WeaponDef> = {
-  hornCannon: {
-    id: 'hornCannon',
-    fireInterval: 0.26,
+  // Fired in pairs by the Triceratops (one per flank): about the DPS of one bigger gun.
+  sideCannon: {
+    id: 'sideCannon',
+    fireInterval: 0.3,
     projectileSpeed: 270,
-    damage: 12,
+    damage: 7,
     spread: 0.03,
     range: 270,
     projectileKind: 'bolt',

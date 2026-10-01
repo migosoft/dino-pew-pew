@@ -93,7 +93,7 @@ describe('shop', () => {
     const d = dino(a.id);
     fireMounts(s, d, [0]);
     const p = s.projectiles.at(-1)!;
-    const w = getWeapon('hornCannon');
+    const w = getWeapon('sideCannon');
     expect(p.damage).toBeCloseTo(w.damage * 1.3);
     expect(p.range).toBeCloseTo(w.range * 1.24);
     expect(d.mounts[0].cooldown).toBeCloseTo(w.fireInterval * 0.88 ** 2);

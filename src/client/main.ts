@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
 import { GameScene } from './scenes/GameScene';
 import { JoinScene } from './scenes/JoinScene';
+import { PreviewScene } from './scenes/PreviewScene';
 
 // The game renders at a low internal resolution and is scaled up by an integer
 // factor so every art pixel stays a crisp square.
@@ -26,7 +27,7 @@ const game = new Phaser.Game({
   pixelArt: true,
   roundPixels: true,
   scale: { mode: Phaser.Scale.NONE, zoom: initial.zoom },
-  scene: [BootScene, JoinScene, GameScene],
+  scene: [BootScene, JoinScene, GameScene, PreviewScene],
 });
 
 window.addEventListener('resize', () => {

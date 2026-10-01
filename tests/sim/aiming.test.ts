@@ -25,8 +25,8 @@ const SIDE_DINO: DinoDef = {
   turnPenaltyAtSpeed: 0,
   hp: 200,
   mounts: [
-    { id: 'left', parent: 'body', offset: { x: 0, y: -4 }, baseAngle: -Math.PI / 2, arcHalf: 30 * DEG, turnSpeed: 4, weapon: 'hornCannon', muzzle: 8 },
-    { id: 'right', parent: 'body', offset: { x: 0, y: 4 }, baseAngle: Math.PI / 2, arcHalf: 30 * DEG, turnSpeed: 4, weapon: 'hornCannon', muzzle: 8 },
+    { id: 'left', parent: 'body', offset: { x: 0, y: -4 }, baseAngle: -Math.PI / 2, arcHalf: 30 * DEG, turnSpeed: 4, weapon: 'sideCannon', muzzle: 8 },
+    { id: 'right', parent: 'body', offset: { x: 0, y: 4 }, baseAngle: Math.PI / 2, arcHalf: 30 * DEG, turnSpeed: 4, weapon: 'sideCannon', muzzle: 8 },
   ],
 };
 registerDino(SIDE_DINO);

@@ -1,6 +1,15 @@
 import Phaser from 'phaser';
 import { rotationStrip, silhouette } from './pixel';
-import { TEAM_PALETTES, WILD_PALETTE, drawHornCannon, drawRider, drawTriceratopsBody, drawTriceratopsHead } from './dinoArt';
+import {
+  TEAM_PALETTES,
+  WILD_PALETTE,
+  drawRider,
+  drawSideCannon,
+  drawTriceratopsBody,
+  drawTriceratopsHead,
+  drawTriceratopsHeadArmor,
+  drawTriceratopsSaddleArmor,
+} from './dinoArt';
 import {
   CANOPY_SIZES,
   ROCK_SIZES,
@@ -48,6 +57,12 @@ export function generateTextures(scene: Phaser.Scene): void {
       if (slot === 0) addStrip(scene, `triceratops_shadow_${pose}`, silhouette(body, 'rgba(0,0,0,0.32)'), DIRS);
     }
     addStrip(scene, `triceratops_head_${key}`, drawTriceratopsHead(pal), DIRS);
+    // Rider armor (only ridden dinos wear it, so no wild variant). DinoView picks up
+    // `<kind>_armor_<palette>` (body) and `<kind>_headArmor_<palette>` whenever they exist.
+    if (key !== 'wild') {
+      addStrip(scene, `triceratops_armor_${key}`, drawTriceratopsSaddleArmor(pal), DIRS);
+      addStrip(scene, `triceratops_headArmor_${key}`, drawTriceratopsHeadArmor(pal), DIRS);
+    }
     for (const pose of [0, 1] as const) {
       const body = drawRaptorBody(pal, pose);
       addStrip(scene, `velociraptor_body_${key}_${pose}`, body, DIRS);
@@ -58,7 +73,7 @@ export function generateTextures(scene: Phaser.Scene): void {
     addImage(scene, `totem_${key}`, drawTotem(pal.tunic, pal.tunicLight));
   });
   addImage(scene, 'campStone', drawCampStone());
-  addStrip(scene, 'weapon_hornCannon', drawHornCannon(), DIRS);
+  addStrip(scene, 'weapon_sideCannon', drawSideCannon(), DIRS);
   addStrip(scene, 'weapon_raptorDart', drawRaptorDart(), DIRS);
 
   const stages: FoodStage[] = [0, 1, 2];

@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { NEW_TEAM, type LobbyInfo } from '../../net/protocol';
 import { pixelText } from '../render/Hud';
 import { TEAM_COLORS } from '../teams';
+import { clawCursor } from '../cursor';
 
 interface Option {
   label: string;
@@ -22,6 +23,8 @@ export class JoinScene extends Phaser.Scene {
   create(data: { message?: string }): void {
     this.objects = [];
     this.cameras.main.setBackgroundColor('#10140c');
+    // The canvas hides the OS cursor (the game draws a reticle); menus show a claw instead.
+    this.input.setDefaultCursor(clawCursor());
     this.title(data.message ?? 'CONNECTING...');
     fetch('/api/lobby')
       .then((r) => r.json() as Promise<LobbyInfo>)
@@ -50,7 +53,7 @@ export class JoinScene extends Phaser.Scene {
     options.forEach((o, i) => {
       const t = pixelText(this, Math.round(cam.width / 2), 112 + i * 16, `${i + 1}  ${o.label}`, o.enabled ? o.tint : 0x5a5a5a).setOrigin(0.5);
       if (o.enabled) {
-        t.setInteractive({ useHandCursor: true });
+        t.setInteractive({ cursor: clawCursor(true) });
         t.on('pointerover', () => t.setScale(1.15));
         t.on('pointerout', () => t.setScale(1));
         t.on('pointerdown', o.pick);

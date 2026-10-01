@@ -3,6 +3,7 @@ import type { PlayerInfo } from '../../net/protocol';
 import { MAX_UPGRADE_LEVEL, UPGRADES, UPGRADE_STATS, upgradeCost, type UpgradeStat } from '../../sim/upgrades';
 import { pixelText } from './Hud';
 import { DEPTH } from './depth';
+import { clawCursor } from '../cursor';
 
 const W = 250;
 const ROW = 16;
@@ -20,7 +21,7 @@ export class ShopPanel {
     this.g = scene.add.graphics().setScrollFactor(0).setDepth(depth);
     this.title = pixelText(scene, 0, 0, '', 0xffe066).setDepth(depth + 1);
     this.rows = UPGRADE_STATS.map((stat) => {
-      const t = pixelText(scene, 0, 0, '').setDepth(depth + 1).setInteractive({ useHandCursor: true });
+      const t = pixelText(scene, 0, 0, '').setDepth(depth + 1).setInteractive({ cursor: clawCursor(true) });
       t.on('pointerdown', () => this.open && this.onBuy(stat));
       return t;
     });

@@ -85,6 +85,8 @@ export interface DinoDef {
   hp: number;
   head?: HeadDef;
   mounts: MountDef[];
+  /** All mounts fire together on every trigger pull, each along its own barrel. */
+  volley?: boolean;
 }
 
 export interface WeaponDef {

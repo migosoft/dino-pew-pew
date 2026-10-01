@@ -58,6 +58,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(data: { team: string; kind: string }): void {
+    // The default cursor is shared by all scenes: hide it again, the reticle replaces it.
+    this.input.setDefaultCursor('none');
     const cam = this.cameras.main;
     this.status = pixelText(this, Math.round(cam.width / 2), Math.round(cam.height / 2), 'JOINING...').setOrigin(0.5);
     this.net = new NetClient(gameSocketUrl(), data.team, data.kind);
