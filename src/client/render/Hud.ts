@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { Dino, Vec2 } from '../../sim/types';
 import { getDino } from '../../sim/defs/dinos';
 import { BASE_RADIUS } from '../../sim/players';
+import { totalLevels } from '../../sim/upgrades';
 import type { PlayerInfo, TeamInfo } from '../../net/protocol';
 import { teamColor } from '../teams';
 import { FONT_KEY } from './textures';
@@ -32,6 +33,7 @@ export class Hud {
   private center: Phaser.GameObjects.BitmapText;
   private zone: Phaser.GameObjects.BitmapText;
   private hint: Phaser.GameObjects.BitmapText;
+  private notice = { text: '', until: 0 };
   private board: Phaser.GameObjects.BitmapText;
   private feed: { text: Phaser.GameObjects.BitmapText; born: number }[] = [];
   private tags: Phaser.GameObjects.BitmapText[] = [];
@@ -51,6 +53,11 @@ export class Hud {
     const kb = scene.input.keyboard!;
     this.tab = kb.addKey('TAB');
     kb.addCapture('TAB');
+  }
+
+  /** Show a short message in the hint line for a moment. */
+  showNotice(text: string): void {
+    this.notice = { text, until: this.scene.time.now + 2200 };
   }
 
   addKill(killer: PlayerInfo | undefined, victim: PlayerInfo | undefined, victimKind: string, teams: TeamInfo[]): void {
@@ -78,7 +85,12 @@ export class Hud {
 
     const riders = m.players.length;
     this.stats
-      .setText(`TEAM ${teamInfo?.name ?? '?'}\nK ${m.me?.kills ?? 0}  D ${m.me?.deaths ?? 0}\nRIDERS ${riders}`)
+      .setText(
+        `TEAM ${teamInfo?.name ?? '?'}\n$ ${m.me?.money ?? 0}\nK ${m.me?.kills ?? 0}  D ${m.me?.deaths ?? 0}\nRIDERS ${riders}` +
+          (m.me && totalLevels(m.me.upgrades) > 0
+            ? `\nDMG${m.me.upgrades.damage} RNG${m.me.upgrades.range} ROF${m.me.upgrades.fireRate} ARM${m.me.upgrades.armor}`
+            : ''),
+      )
       .setTint(myTeam ? teamColor(myTeam, m.teams) : 0xffffff);
 
     // Respawn countdown.
@@ -89,7 +101,7 @@ export class Hud {
 
     // Safe zone hint.
     const inBase = d && teamInfo && (d.x - teamInfo.base.x) ** 2 + (d.y - teamInfo.base.y) ** 2 < BASE_RADIUS * BASE_RADIUS;
-    this.zone.setText(inBase ? 'SAFE ZONE' : '').setPosition(Math.round(cam.width / 2), 6);
+    this.zone.setText(inBase ? 'SAFE ZONE - E: SHOP' : '').setPosition(Math.round(cam.width / 2), 6);
 
     // Eating feedback, and a reminder of what this species eats when it's hurt.
     let hint = '';
@@ -103,7 +115,10 @@ export class Hud {
             ? `HURT? STAND STILL AT ${def.size === 'large' ? 'BUSHES, FERNS OR TREES' : 'BUSHES OR FERNS'} TO EAT`
             : 'HURT? STAND STILL AT PLANTS OR A CARCASS TO EAT';
     }
-    this.hint.setText(hint).setTint(d?.eating ? 0x8ef06a : 0xe8dcb8).setPosition(Math.round(cam.width / 2), cam.height - 6);
+    const showNotice = this.scene.time.now < this.notice.until;
+    this.hint
+      .setText(showNotice ? this.notice.text : hint)
+      .setTint(showNotice ? 0xffb030 : d?.eating ? 0x8ef06a : 0xe8dcb8).setPosition(Math.round(cam.width / 2), cam.height - 6);
 
     // Kill feed (top right), fading out.
     const now = this.scene.time.now;

@@ -113,6 +113,22 @@ describe('game server', () => {
     expect(match!.state.dinos).toHaveLength(0);
   });
 
+  it('sells upgrades over the socket and explains refusals', async () => {
+    const host = await startServer();
+    const a = await client(host);
+    a.send({ t: 'join', team: NEW_TEAM, kind: 'triceratops' });
+    const w = await a.waitFor<WelcomeMsg>((m) => m.t === 'welcome');
+    a.send({ t: 'buy', stat: 'damage' });
+    await a.waitFor((m) => m.t === 'notice' && m.message === 'NOT ENOUGH MONEY');
+    match!.state.players[0].money = 1000;
+    a.send({ t: 'buy', stat: 'damage' });
+    a.send({ t: 'buy', stat: 'teleport' }); // invalid stat: ignored
+    await new Promise((r) => setTimeout(r, 30));
+    await ticks(3);
+    const snap = await a.waitFor<SnapshotMsg>((m) => m.t === 'snap' && m.players.some((p) => p.id === w.playerId && p.upgrades.damage === 1));
+    expect(snap.players[0].money).toBe(1000 - 60);
+  });
+
   it('disconnects clients that flood messages', async () => {
     const host = await startServer();
     const a = await client(host);

@@ -28,13 +28,13 @@ export function fireMounts(state: GameState, d: Dino, mounts: number[]): void {
       vx,
       vy,
       traveled: 0,
-      range: w.range,
+      range: w.range * d.rangeMul,
       damage: w.damage * d.damageMul,
       radius: w.projectileRadius,
       kind: w.projectileKind,
       alive: true,
     });
     st.cooldown = w.fireInterval * d.fireIntervalMul;
-    state.events.push({ type: 'shot', dinoId: d.id, mount: i, projectileId: id, team: d.team, x: muzzle.x, y: muzzle.y, vx, vy, range: w.range });
+    state.events.push({ type: 'shot', dinoId: d.id, mount: i, projectileId: id, team: d.team, x: muzzle.x, y: muzzle.y, vx, vy, range: w.range * d.rangeMul });
   }
 }

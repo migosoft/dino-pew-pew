@@ -15,7 +15,11 @@ import { Effects } from '../render/Effects';
 import { ArcIndicator } from '../render/ArcIndicator';
 import { Hud, pixelText } from '../render/Hud';
 import { DEPTH } from '../render/depth';
+import { FONT_KEY } from '../render/textures';
 import { paletteKey } from '../teams';
+import { ShopPanel } from '../render/ShopPanel';
+import { BASE_RADIUS } from '../../sim/players';
+import { UPGRADE_STATS } from '../../sim/upgrades';
 
 const CAMERA_LOOKAHEAD = 0.18;
 const CAMERA_LOOKAHEAD_MAX = 40;
@@ -31,6 +35,8 @@ export class GameScene extends Phaser.Scene {
   private projectileView!: ProjectileView;
   private foodView!: FoodView;
   private lastFeedFx = 0;
+  private shop!: ShopPanel;
+  private inBase = false;
   private fx!: Effects;
   private arc!: ArcIndicator;
   private hud!: Hud;
@@ -77,6 +83,19 @@ export class GameScene extends Phaser.Scene {
     this.hud = new Hud(this);
     this.playerInput = new PlayerInput(this);
     this.reticle = this.add.image(0, 0, 'reticle').setDepth(DEPTH.hud + 1);
+    this.shop = new ShopPanel(this, (stat) => this.net.buy(stat));
+    const kb = this.input.keyboard!;
+    kb.on('keydown-E', () => {
+      if (this.inBase || this.shop.isOpen) this.shop.toggle();
+    });
+    kb.on('keydown-ESC', () => this.shop.close());
+    ['ONE', 'TWO', 'THREE', 'FOUR'].forEach((key, i) => kb.on('keydown-' + key, () => this.shop.isOpen && this.net.buy(UPGRADE_STATS[i])));
+    // No shooting while browsing the shop (clicks buy instead).
+    const command = this.playerInput.command.bind(this.playerInput);
+    this.playerInput.command = () => {
+      const c = command();
+      return this.shop.isOpen ? { ...c, fire: false } : c;
+    };
     const cam = this.cameras.main;
     cam.setBounds(0, 0, this.world.width, this.world.height);
     cam.setRoundPixels(true);
@@ -118,6 +137,11 @@ export class GameScene extends Phaser.Scene {
     const ptr = this.input.activePointer;
     const rw = cam.getWorldPoint(ptr.x, ptr.y);
     this.reticle.setPosition(Math.round(rw.x), Math.round(rw.y));
+    const myBase = teams.find((t) => t.id === meInfo?.team)?.base;
+    this.inBase = !!(myDino && myBase && (myDino.x - myBase.x) ** 2 + (myDino.y - myBase.y) ** 2 < BASE_RADIUS * BASE_RADIUS);
+    if (!this.inBase && this.shop.isOpen) this.shop.close();
+    this.shop.update(meInfo);
+    for (const n of this.net.notices.splice(0)) this.hud.showNotice(n);
     this.hud.update({ me: meInfo, myDino, dinos, players, teams });
   }
 
@@ -146,6 +170,9 @@ export class GameScene extends Phaser.Scene {
         this.fx.hit(e.x, e.y);
         if (this.dinoViews.get(e.targetId)?.lastView.playerId === this.net.welcome!.playerId) this.cameras.main.shake(80, 0.003);
         break;
+      case 'bounty':
+        if (e.playerId === this.net.welcome!.playerId) this.floatText(e.x, e.y, `+$${e.amount}`);
+        break;
       case 'melee':
         this.fx.hit(e.x, e.y);
         if (this.dinoViews.get(e.targetId)?.lastView.playerId === this.net.welcome!.playerId) this.cameras.main.shake(100, 0.004);
@@ -165,6 +192,11 @@ export class GameScene extends Phaser.Scene {
         );
         break;
     }
+  }
+
+  private floatText(x: number, y: number, text: string): void {
+    const t = this.add.bitmapText(Math.round(x), Math.round(y - 14), FONT_KEY, text).setOrigin(0.5).setTint(0xffe066).setDepth(DEPTH.hud);
+    this.tweens.add({ targets: t, y: t.y - 16, alpha: 0, delay: 500, duration: 900, onComplete: () => t.destroy() });
   }
 
   private followCamera(target: { x: number; y: number } | undefined): void {

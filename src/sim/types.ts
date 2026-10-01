@@ -147,6 +147,9 @@ export interface Dino {
   /** Stat multipliers (upgrades). */
   damageMul: number;
   fireIntervalMul: number;
+  rangeMul: number;
+  /** Fraction of incoming damage absorbed (0..1). */
+  armor: number;
   /** Distance travelled, used to animate legs. */
   stride: number;
   /** True while standing at food and healing (this tick). */
@@ -258,7 +261,8 @@ export type GameEvent =
   | { type: 'impact'; projectileId: number; x: number; y: number }
   | { type: 'death'; dinoId: number; x: number; y: number; team: Team }
   | { type: 'kill'; killer: number | null; victim: number | null; victimKind: string }
-  | { type: 'spawn'; playerId: number; dinoId: number };
+  | { type: 'spawn'; playerId: number; dinoId: number }
+  | { type: 'bounty'; playerId: number; amount: number; x: number; y: number };
 
 export interface TeamState {
   id: Team;
@@ -279,6 +283,10 @@ export interface PlayerState {
   respawn: number;
   kills: number;
   deaths: number;
+  /** Earned from kills; kept across deaths. */
+  money: number;
+  /** Bought in the base camp; lost on death. */
+  upgrades: { damage: number; range: number; fireRate: number; armor: number };
 }
 
 export interface GameState {

@@ -6,7 +6,7 @@ import { addCarcassFor } from './feeding';
 /** Deal damage from `sourceDinoId` (may already be dead/gone). Dinos in their own base are immune. */
 export function applyDamage(state: GameState, target: Dino, amount: number, sourceDinoId: number): void {
   if (!target.alive || isInOwnBase(state, target)) return;
-  target.hp -= amount;
+  target.hp -= amount * (1 - target.armor);
   target.hitFlash = 0.12;
   target.lastAttacker = sourceDinoId;
   target.sinceHit = 0;

@@ -1,4 +1,5 @@
 import type { InputCommand } from '../../sim/types';
+import type { UpgradeStat } from '../../sim/upgrades';
 import { encodeInput, type PlantTuple, type ServerMsg, type WelcomeMsg } from '../../net/protocol';
 import { Mirror } from './Mirror';
 
@@ -19,6 +20,8 @@ export class NetClient {
   private ws: WebSocket;
   private seq = 0;
   private plantUpdates: PlantTuple[] = [];
+  /** Server notices (e.g. refused purchases) not yet shown. */
+  notices: string[] = [];
 
   constructor(url: string, team: string, kind: string) {
     this.ws = new WebSocket(url);
@@ -44,6 +47,9 @@ export class NetClient {
         this.mirror.push(msg, performance.now());
         if (msg.plants.length) this.plantUpdates.push(...msg.plants);
         break;
+      case 'notice':
+        this.notices.push(msg.message);
+        break;
       case 'error':
         this.error = msg.message;
         this.ws.close();
@@ -61,6 +67,10 @@ export class NetClient {
   sendInput(cmd: InputCommand): void {
     if (this.status !== 'playing' || this.ws.readyState !== WebSocket.OPEN) return;
     this.ws.send(encodeInput(++this.seq, cmd));
+  }
+
+  buy(stat: UpgradeStat): void {
+    if (this.status === 'playing') this.ws.send(JSON.stringify({ t: 'buy', stat }));
   }
 
   close(): void {

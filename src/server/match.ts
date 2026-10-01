@@ -4,6 +4,7 @@ import { DT, TICK_RATE } from '../sim/types';
 import { createMatch, step } from '../sim/sim';
 import { listDinos } from '../sim/defs/dinos';
 import { MAX_PLAYERS, MAX_TEAMS, addPlayer, createTeam, removePlayer } from '../sim/players';
+import { buyUpgrade } from '../sim/upgrades';
 import {
   NEW_TEAM,
   PROTOCOL_VERSION,
@@ -152,6 +153,13 @@ export class Match {
       if (s.playerId === null || msg.seq <= s.seq) return; // stale or out of order
       s.seq = msg.seq;
       s.input = msg.input;
+      return;
+    }
+    if (msg.t === 'buy') {
+      if (s.playerId === null) return;
+      const result = buyUpgrade(this.state, s.playerId, msg.stat);
+      const why: Record<string, string> = { 'not-in-base': 'SHOP ONLY IN YOUR BASE CAMP', 'max-level': 'ALREADY AT MAX LEVEL', 'no-money': 'NOT ENOUGH MONEY', 'no-dino': 'WAIT UNTIL YOU RESPAWN' };
+      if (result !== 'ok') this.send(s, { t: 'notice', message: why[result] });
       return;
     }
     // join

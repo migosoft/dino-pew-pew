@@ -3,6 +3,7 @@ import { getDino } from './defs/dinos';
 import { angleTo } from './math';
 import { rand, randRange } from './rng';
 import { createDino, findDino, findPlayer, findTeam, isFree } from './world';
+import { applyUpgrades, noUpgrades, payBounty } from './upgrades';
 
 export const MAX_TEAMS = 4;
 export const MAX_PLAYERS = 16;
@@ -42,6 +43,8 @@ export function addPlayer(state: GameState, teamId: string, kind: string, name: 
     respawn: 0,
     kills: 0,
     deaths: 0,
+    money: 0,
+    upgrades: noUpgrades(),
   };
   state.players.push(player);
   team.emptyFor = 0;
@@ -77,6 +80,7 @@ export function spawnPlayerDino(state: GameState, player: PlayerState): Dino {
   // Face the map center.
   const heading = angleTo({ x, y }, { x: state.world.width / 2, y: state.world.height / 2 });
   const dino = createDino(state, player.kind, player.team, x, y, heading, player.id);
+  applyUpgrades(dino, player.upgrades);
   player.dinoId = dino.id;
   state.events.push({ type: 'spawn', playerId: player.id, dinoId: dino.id });
   return dino;
@@ -105,12 +109,15 @@ export function isInOwnBase(state: GameState, d: Dino): boolean {
 /** Called when a rider's dino dies. */
 export function onPlayerDinoDeath(state: GameState, victim: Dino, killer: Dino | undefined): void {
   const vp = victim.playerId !== null ? findPlayer(state, victim.playerId) : undefined;
+  const kp = killer?.playerId != null && killer.team !== victim.team ? findPlayer(state, killer.playerId) : undefined;
+  // Pay before resetting the victim's upgrades: upgraded riders are worth more.
+  if (kp) payBounty(state, kp, victim, vp, getDino(victim.kind).bounty);
   if (vp) {
     vp.dinoId = null;
     vp.respawn = RESPAWN_TIME;
     vp.deaths++;
+    vp.upgrades = noUpgrades();
   }
-  const kp = killer?.playerId != null && killer.team !== victim.team ? findPlayer(state, killer.playerId) : undefined;
   // K/D counts rider-vs-rider kills; wild kills are reported (and paid for) separately.
   if (kp && vp) kp.kills++;
   if (kp || vp) state.events.push({ type: 'kill', killer: kp?.id ?? null, victim: vp?.id ?? null, victimKind: victim.kind });

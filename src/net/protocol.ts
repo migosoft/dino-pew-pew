@@ -8,6 +8,7 @@ import { getDino } from '../sim/defs/dinos';
 import { findTeam } from '../sim/world';
 import { clamp } from '../sim/math';
 import { teamName } from '../sim/players';
+import { UPGRADE_STATS, type UpgradeStat, type Upgrades } from '../sim/upgrades';
 
 export const PROTOCOL_VERSION = 2;
 /** The server broadcasts a snapshot every N simulation ticks (60 Hz / 3 = 20 Hz). */
@@ -18,7 +19,8 @@ export const NEW_TEAM = 'new';
 
 export type ClientMsg =
   | { t: 'join'; team: string; kind: string }
-  | { t: 'input'; seq: number; input: InputCommand };
+  | { t: 'input'; seq: number; input: InputCommand }
+  | { t: 'buy'; stat: UpgradeStat };
 
 /** Validate and clamp an untrusted client message. Returns null for anything malformed. */
 export function parseClientMsg(raw: string): ClientMsg | null {
@@ -34,6 +36,9 @@ export function parseClientMsg(raw: string): ClientMsg | null {
   if (o.t === 'join') {
     if (typeof o.team !== 'string' || typeof o.kind !== 'string' || o.team.length > 32 || o.kind.length > 32) return null;
     return { t: 'join', team: o.team, kind: o.kind };
+  }
+  if (o.t === 'buy') {
+    return UPGRADE_STATS.includes(o.stat as UpgradeStat) ? { t: 'buy', stat: o.stat as UpgradeStat } : null;
   }
   if (o.t === 'input') {
     const seq = num(o.seq);
@@ -79,6 +84,8 @@ export interface PlayerInfo {
   respawn: number;
   kills: number;
   deaths: number;
+  money: number;
+  upgrades: Upgrades;
 }
 
 export interface SpeciesInfo {
@@ -150,12 +157,19 @@ export interface SnapshotMsg {
   plants: PlantTuple[];
 }
 
+/** Fatal: the connection is closed after this. */
 export interface ErrorMsg {
   t: 'error';
   message: string;
 }
 
-export type ServerMsg = WelcomeMsg | SnapshotMsg | ErrorMsg;
+/** Informational (e.g. a refused purchase). */
+export interface NoticeMsg {
+  t: 'notice';
+  message: string;
+}
+
+export type ServerMsg = WelcomeMsg | SnapshotMsg | ErrorMsg | NoticeMsg;
 
 const q = (v: number, s: number) => Math.round(v * s);
 
@@ -201,6 +215,8 @@ export function decodeDino(t: DinoTuple): Dino {
     sinceHit: 999,
     damageMul: 1,
     fireIntervalMul: 1,
+    rangeMul: 1,
+    armor: 0,
     stride: stride / 10,
     eating: (flags & 2) !== 0,
     px: 0,
@@ -233,6 +249,8 @@ export function playerInfos(state: GameState): PlayerInfo[] {
     respawn: Math.max(0, Math.round(p.respawn * 10) / 10),
     kills: p.kills,
     deaths: p.deaths,
+    money: p.money,
+    upgrades: { ...p.upgrades },
   }));
 }
 
