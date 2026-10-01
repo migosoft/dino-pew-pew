@@ -3,7 +3,7 @@ import { WILD_TEAM } from './types';
 import { getDino } from './defs/dinos';
 import { DEG, angleDiff, angleTo, clamp } from './math';
 import { rand, randRange } from './rng';
-import { findDino, isFree } from './world';
+import { findDino, isAirborne, isDeepWater, isFree } from './world';
 import { BASE_RADIUS, isInOwnBase } from './players';
 import { canEat } from './systems/feeding';
 import { isHostile } from './systems/melee';
@@ -38,12 +38,27 @@ export function makeWildAi(state: GameState): WildAi {
 
 const PROBE_ANGLES = [0, 30, -30, 60, -60, 95, -95, 140, -140].map((a) => a * DEG);
 
-/** A heading near `desired` that is not blocked a short distance ahead. */
+/**
+ * A heading near `desired` that is not blocked a short distance ahead. Calm dinos also keep
+ * out of deep water if they can; hunting, charging and fleeing ones wade straight in.
+ */
 function clearHeading(state: GameState, d: Dino, desired: number, sideBias: number): number {
+  const ai = d.ai!;
   const r = getDino(d.kind).radius;
+  const open = (h: number) => [16, 32].every((dist) => isFree(state.world, d.x + Math.cos(h) * dist, d.y + Math.sin(h) * dist, r * 0.9));
+  const dry = (h: number) => [24, 48].every((dist) => !isDeepWater(state.world, d.x + Math.cos(h) * dist, d.y + Math.sin(h) * dist));
+  if ((ai.mode === 'wander' || ai.mode === 'graze') && !isDeepWater(state.world, d.x, d.y)) {
+    for (const a of PROBE_ANGLES) {
+      const h = desired + a * sideBias;
+      if (!open(h) || !dry(h)) continue;
+      // Keep the detour around a lake as the new wander direction, so it doesn't turn back into it.
+      if (ai.mode === 'wander') ai.wanderHeading = h;
+      return h;
+    }
+  }
   for (const a of PROBE_ANGLES) {
     const h = desired + a * sideBias;
-    if ([16, 32].every((dist) => isFree(state.world, d.x + Math.cos(h) * dist, d.y + Math.sin(h) * dist, r * 0.9))) return h;
+    if (open(h)) return h;
   }
   return desired + Math.PI * sideBias;
 }
@@ -108,10 +123,27 @@ function findPrey(state: GameState, d: Dino): Dino | undefined {
   return best;
 }
 
+/**
+ * A tail-whipping dino sometimes sweeps its tail at a hostile right behind it (a raptor
+ * biting its tail, a rider sneaking up), whatever it is doing.
+ */
+function wantsWhip(state: GameState, d: Dino, def: DinoDef): boolean {
+  const ab = def.ability;
+  if (ab?.kind !== 'whip' || d.abilityCooldown > 0 || d.abilityT >= 0) return false;
+  const back = d.heading + Math.PI;
+  const behind = state.dinos.some((o) => {
+    if (o === d || !o.alive || isAirborne(o) || !isHostile(d, o) || isInOwnBase(state, o)) return false;
+    const reach = def.radius + getDino(o.kind).radius + ab.hitReach - 4;
+    if ((o.x - d.x) ** 2 + (o.y - d.y) ** 2 > reach * reach) return false;
+    return Math.abs(angleDiff(angleTo(d, o), back)) < (ab.arc ?? Math.PI / 2) * 0.8;
+  });
+  return behind && rand(state.rng) < ABILITY_CHANCE * 4;
+}
+
 /** Sometimes pounce (leap) or charge (dash) at a chased target that is in range and ahead. */
 function wantsAbility(state: GameState, d: Dino, def: DinoDef, target: Dino): boolean {
   const ab = def.ability;
-  if (!ab || d.abilityCooldown > 0 || d.abilityT >= 0) return false;
+  if (!ab || ab.kind === 'whip' || d.abilityCooldown > 0 || d.abilityT >= 0) return false;
   const dist = Math.hypot(target.x - d.x, target.y - d.y);
   const [lo, hi, arc] = ab.kind === 'leap' ? [40, ab.maxRange ?? 0, LEAP_ABILITY_ARC] : [30, 130, DASH_ABILITY_ARC];
   if (dist < lo || dist > hi || Math.abs(angleDiff(angleTo(d, target), d.heading)) > arc) return false;
@@ -126,8 +158,14 @@ function goTo(state: GameState, d: Dino, p: Vec2, stopAt: number): InputCommand 
 }
 
 export function computeWildCommand(state: GameState, d: Dino, dt: number): InputCommand {
-  const ai = d.ai!;
   const def = getDino(d.kind);
+  const cmd = decide(state, d, def, dt);
+  if (!cmd.ability && wantsWhip(state, d, def)) cmd.ability = true;
+  return cmd;
+}
+
+function decide(state: GameState, d: Dino, def: DinoDef, dt: number): InputCommand {
+  const ai = d.ai!;
   ai.timer -= dt;
 
   // Unstick: if pushing against something, back off and turn.

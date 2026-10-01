@@ -84,11 +84,11 @@ export class JoinScene extends Phaser.Scene {
     this.team = team;
     this.title('CHOOSE YOUR MOUNT');
     const options: Option[] = lobby.species.map((s) => ({
-      label: `${s.kind.padEnd(12)} ${s.diet.padEnd(9)}  HP ${String(s.hp).padStart(3)}  SPEED ${String(s.speed).padStart(3)}`,
+      label: `${s.kind.padEnd(13)} ${s.diet.padEnd(9)}  HP ${String(s.hp).padStart(3)}  SPEED ${String(s.speed).padStart(3)}`,
       tint: 0xf4f0e0,
       enabled: true,
       pick: () => this.scene.start('game', { team: this.team, kind: s.kind }),
     }));
-    this.menu('W/S MOVE  A/D TURN  MOUSE AIM  CLICK FIRE  R-CLICK JUMP/DASH  TAB SCORES', options);
+    this.menu('W/S MOVE  A/D TURN  MOUSE AIM  CLICK FIRE  R-CLICK ABILITY  TAB SCORES', options);
   }
 }

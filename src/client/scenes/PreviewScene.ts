@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { WILD_TEAM } from '../../sim/types';
 import { createMatch } from '../../sim/sim';
 import { createDino } from '../../sim/world';
+import { getDino } from '../../sim/defs/dinos';
 import { DinoView } from '../render/DinoView';
 import { DEPTH } from '../render/depth';
 import { pixelText } from '../render/Hud';
@@ -9,7 +10,8 @@ import { drawClawCursor } from '../render/textures/worldArt';
 
 const PALETTES = ['t0', 't1', 't2', 't3', 'wild'];
 const HEADINGS = 8;
-const CELL = 52;
+/** Cell size: big enough that neighbouring dinos (neck and tail included) don't overlap. */
+const cellFor = (radius: number) => Math.max(52, radius * 8);
 
 /**
  * Art preview sheet, opened with `?preview` (`?preview=velociraptor` for another species,
@@ -25,6 +27,7 @@ export class PreviewScene extends Phaser.Scene {
     const params = new URLSearchParams(location.search);
     const kind = params.get('preview') || 'triceratops';
     const zoom = Number(params.get('zoom')) || 1;
+    const CELL = cellFor(getDino(kind).radius);
     this.cameras.main.setBackgroundColor('#5a6b3a').setZoom(zoom);
     const s = createMatch(1);
     PALETTES.forEach((pal, row) => {

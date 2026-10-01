@@ -3,9 +3,9 @@ import { getDino } from './defs/dinos';
 import { makeRng } from './rng';
 import { generateWorld, type WorldGenOptions } from './worldgen';
 import { updatePlayers } from './players';
-import { moveDino } from './systems/movement';
+import { moveDino, terrainSpeedFactor } from './systems/movement';
 import { resolveDinoContacts, resolveObstacles } from './systems/collision';
-import { selectFiringMounts, updateAim } from './systems/aiming';
+import { selectFiringMounts, selectSideMounts, updateAim } from './systems/aiming';
 import { fireMounts } from './systems/firing';
 import { updateProjectiles } from './systems/projectiles';
 import { feed, updateFood } from './systems/feeding';
@@ -67,7 +67,7 @@ export function step(state: GameState, inputs: Map<number, InputCommand>, dt: nu
     if (!cmd) {
       // No input (e.g. connection hiccup): roll to a stop.
       if (!busy) {
-        moveDino(d, { throttle: 0, turn: 0, aimWorld: d, fire: false }, dt);
+        moveDino(d, { throttle: 0, turn: 0, aimWorld: d, fire: false }, dt, terrainSpeedFactor(state.world, d));
         resolveObstacles(state, d);
       }
       feed(state, d, false, dt);
@@ -75,7 +75,7 @@ export function step(state: GameState, inputs: Map<number, InputCommand>, dt: nu
     }
 
     if (!busy) {
-      moveDino(d, cmd, dt);
+      moveDino(d, cmd, dt, terrainSpeedFactor(state.world, d));
       resolveObstacles(state, d);
       tryStartAbility(state, d, cmd);
     }
@@ -83,7 +83,10 @@ export function step(state: GameState, inputs: Map<number, InputCommand>, dt: nu
     const errors = updateAim(d, def, cmd.aimWorld, dt);
     // Only riders operate the mounted weapons.
     const firing = cmd.fire && d.playerId !== null;
-    if (firing) fireMounts(state, d, def.volley ? def.mounts.map((_, i) => i) : selectFiringMounts(errors));
+    if (firing) {
+      const mounts = def.volley ? def.mounts.map((_, i) => i) : def.fireMode === 'side' ? selectSideMounts(d, def, cmd.aimWorld) : selectFiringMounts(errors);
+      fireMounts(state, d, mounts);
+    }
     feed(state, d, firing, dt);
   }
 

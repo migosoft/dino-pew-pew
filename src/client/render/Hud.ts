@@ -26,6 +26,9 @@ const FEED_LINES = 5;
 const FEED_SECONDS = 6;
 
 /** Screen-space HUD plus world-space name tags and health bars. */
+/** HUD names of the abilities (5x7 font: uppercase). */
+const ABILITY_LABEL = { leap: 'JUMP', dash: 'DASH', whip: 'WHIP' } as const;
+
 export class Hud {
   private g: Phaser.GameObjects.Graphics;
   private world: Phaser.GameObjects.Graphics;
@@ -86,7 +89,7 @@ export class Hud {
     const riders = m.players.length;
     // Right-mouse ability and its cooldown.
     const ability = d ? getDino(d.kind).ability : undefined;
-    const abilityLine = ability && d ? `\n${ability.kind === 'leap' ? 'JUMP' : 'DASH'} ${d.abilityCooldown > 0 ? `IN ${Math.ceil(d.abilityCooldown)}` : 'READY'}` : '';
+    const abilityLine = ability && d ? `\n${ABILITY_LABEL[ability.kind]} ${d.abilityCooldown > 0 ? `IN ${Math.ceil(d.abilityCooldown)}` : 'READY'}` : '';
     this.stats
       .setText(
         `TEAM ${teamInfo?.name ?? '?'}\n$ ${m.me?.money ?? 0}\nK ${m.me?.kills ?? 0}  D ${m.me?.deaths ?? 0}\nRIDERS ${riders}` +

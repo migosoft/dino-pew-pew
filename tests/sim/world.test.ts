@@ -3,7 +3,8 @@ import type { InputCommand } from '../../src/sim/types';
 import { generateWorld } from '../../src/sim/worldgen';
 import { createMatch } from '../../src/sim/sim';
 import { addPlayer, createTeam } from '../../src/sim/players';
-import { BASE_CLEAR } from '../../src/sim/worldgen';
+import { BASE_CLEAR, OBSTACLE_GAP } from '../../src/sim/worldgen';
+import { getDino } from '../../src/sim/defs/dinos';
 import { isFree } from '../../src/sim/world';
 import { moveDino } from '../../src/sim/systems/movement';
 import { resolveObstacles } from '../../src/sim/systems/collision';
@@ -27,6 +28,21 @@ describe('world generation', () => {
     expect(w.obstacles.some((o) => o.kind === 'tree')).toBe(true);
     expect(w.bases).toHaveLength(4);
     for (const b of w.bases) expect(isFree(w, b.x, b.y, BASE_CLEAR - 30)).toBe(true);
+  });
+
+  it('is 3072 px square and leaves room for the biggest dino between any two obstacles', () => {
+    const w = generateWorld(99);
+    expect([w.width, w.height]).toEqual([3072, 3072]);
+    const inner = w.obstacles.filter((o) => o.x > 30 && o.y > 30 && o.x < w.width - 30 && o.y < w.height - 30);
+    expect(inner.length).toBeGreaterThan(300);
+    for (let i = 0; i < inner.length; i++) {
+      for (let j = i + 1; j < inner.length; j++) {
+        const a = inner[i];
+        const b = inner[j];
+        expect(Math.hypot(a.x - b.x, a.y - b.y) - a.r - b.r).toBeGreaterThanOrEqual(OBSTACLE_GAP - 1e-9);
+      }
+    }
+    expect(OBSTACLE_GAP).toBeGreaterThan(2 * getDino('brontosaurus').radius);
   });
 });
 

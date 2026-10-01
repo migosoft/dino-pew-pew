@@ -31,6 +31,8 @@ export interface HeadDef {
   maxYaw: number;
   /** Radians per second. */
   yawSpeed: number;
+  /** Drawn below the body (a long neck growing out from under the shoulders). Visual only. */
+  under?: boolean;
 }
 
 /** Where a weapon sits on a dino and which way it can point. */
@@ -66,9 +68,12 @@ export interface MeleeDef {
   interval: number;
 }
 
-/** Active ability on a cooldown: a leap toward the aim point, or a straight dash. Both deal damage on impact. */
+/**
+ * Active ability on a cooldown: a leap toward the aim point, a straight dash, or a tail whip
+ * that sweeps the area behind the dino. All of them deal damage on impact.
+ */
 export interface AbilityDef {
-  kind: 'leap' | 'dash';
+  kind: 'leap' | 'dash' | 'whip';
   /** Seconds between uses. */
   cooldown: number;
   /** Seconds the ability controls movement. */
@@ -81,6 +86,16 @@ export interface AbilityDef {
   speed?: number;
   /** Extra distance beyond touching (sum of radii) at which the impact hits. */
   hitReach: number;
+  /** Whip: half-angle around the tail direction that the swing covers, radians. */
+  arc?: number;
+  /** Whip: how far each struck dino is shoved. */
+  knockback?: number;
+}
+
+/** A tail drawn as its own part (it swings during a whip). */
+export interface TailDef {
+  /** Tail root in body-local space (x = forward, so negative = behind). */
+  offset: Vec2;
 }
 
 export interface DinoDef {
@@ -106,7 +121,17 @@ export interface DinoDef {
   mounts: MountDef[];
   /** All mounts fire together on every trigger pull, each along its own barrel. */
   volley?: boolean;
+  /**
+   * 'side': a trigger pull fires every mount whose arc holds the aim point, so only the
+   * guns on the side of the cursor shoot (broadside platforms).
+   */
+  fireMode?: 'side';
   ability?: AbilityDef;
+  tail?: TailDef;
+  /** Where the rider sits, body-local (visual only; default just behind the center). */
+  seat?: Vec2;
+  /** Fraction of maxSpeed kept in deep water (default 0.6). Big dinos wade better. */
+  wadeSpeed?: number;
 }
 
 export interface WeaponDef {
@@ -252,6 +277,10 @@ export const Tile = {
   Dirt: 2,
   Mud: 3,
   Fern: 4,
+  /** Wading water: no slowdown. */
+  Shallow: 5,
+  /** Deep water: dinos slow down to their wadeSpeed. */
+  Deep: 6,
 } as const;
 
 export interface World {
@@ -291,6 +320,7 @@ export type GameEvent =
   | { type: 'melee'; attackerId: number; targetId: number; x: number; y: number }
   | { type: 'ability'; dinoId: number; kind: AbilityDef['kind']; x: number; y: number }
   | { type: 'slam'; dinoId: number; x: number; y: number }
+  | { type: 'whip'; dinoId: number; x: number; y: number }
   | { type: 'impact'; projectileId: number; x: number; y: number }
   | { type: 'death'; dinoId: number; x: number; y: number; team: Team }
   | { type: 'kill'; killer: number | null; victim: number | null; victimKind: string }

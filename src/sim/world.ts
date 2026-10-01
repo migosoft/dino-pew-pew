@@ -1,5 +1,6 @@
-import type { Dino, GameState, Obstacle, PlayerState, Team, TeamState, World } from './types';
+import { Tile, type Dino, type GameState, type Obstacle, type PlayerState, type Team, type TeamState, type World } from './types';
 import { getDino } from './defs/dinos';
+import { valueNoise } from './noise';
 
 export function createDino(state: GameState, kind: string, team: Team, x: number, y: number, heading = 0, playerId: number | null = null): Dino {
   const def = getDino(kind);
@@ -106,4 +107,30 @@ export function isFree(world: World, x: number, y: number, r: number): boolean {
 /** True while a dino is in the air (mid-leap): it passes over rocks and other dinos. */
 export function isAirborne(d: Dino): boolean {
   return d.abilityT >= 0 && getDino(d.kind).ability?.kind === 'leap';
+}
+
+/** Up to this many pixels, terrain borders are wobbled so they look organic instead of square. */
+const TILE_WOBBLE = 14;
+
+/**
+ * Terrain under a world point. Tile borders are wobbled by noise; the ground texture uses
+ * this same lookup, so the shoreline you see is the shoreline the simulation uses.
+ */
+export function tileAt(world: World, x: number, y: number): number {
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  const jx = (valueNoise(ix / 7, iy / 7, world.seed + 3) - 0.5) * TILE_WOBBLE;
+  const jy = (valueNoise(ix / 7, iy / 7, world.seed + 4) - 0.5) * TILE_WOBBLE;
+  const tx = Math.min(world.cols - 1, Math.max(0, Math.floor((ix + jx) / world.tileSize)));
+  const ty = Math.min(world.rows - 1, Math.max(0, Math.floor((iy + jy) / world.tileSize)));
+  return world.tiles[ty * world.cols + tx];
+}
+
+export function isWater(world: World, x: number, y: number): boolean {
+  const t = tileAt(world, x, y);
+  return t === Tile.Shallow || t === Tile.Deep;
+}
+
+export function isDeepWater(world: World, x: number, y: number): boolean {
+  return tileAt(world, x, y) === Tile.Deep;
 }

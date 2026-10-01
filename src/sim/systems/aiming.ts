@@ -77,6 +77,22 @@ export function selectFiringMounts(errors: number[], tolerance = 0.08): number[]
   return best >= 0 ? [best] : [];
 }
 
+/**
+ * Side fire (broadside platforms): every mount whose arc holds the direction from its pivot
+ * to the aim point. Cursor on the left fires the left guns, behind fires the rear gun, and
+ * straight ahead (outside every arc) fires nothing.
+ */
+export function selectSideMounts(d: Dino, def: DinoDef, aim: Vec2): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < def.mounts.length; i++) {
+    const m = def.mounts[i];
+    const parent = parentFrame(d, def, m);
+    const pivot = localToWorld(parent, parent.angle, m.offset);
+    if (Math.abs(angleDiff(angleTo(pivot, aim), parent.angle + m.baseAngle)) <= m.arcHalf) out.push(i);
+  }
+  return out;
+}
+
 /** Total world-angle range a mount can cover right now given body heading (for HUD/AI). */
 export function mountCoverage(d: Dino, def: DinoDef, i: number): { center: number; half: number } {
   const m = def.mounts[i];

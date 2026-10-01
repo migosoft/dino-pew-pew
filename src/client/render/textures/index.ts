@@ -26,21 +26,25 @@ import {
   drawShadowEllipse,
   drawTrunk,
 } from './worldArt';
+import { WAVE_VARIANTS, drawDroplet, drawFish, drawFoamRing, drawRipple, drawWave } from './waterArt';
 import { FONT_CHARS, FONT_H, FONT_W, drawFont } from './font';
 import { drawRaptorBody, drawRaptorHead, drawRaptorHeadArmor, drawRaptorSaddleArmor, drawRaptorSideGun } from './raptorArt';
-import { BUSH_VARIANTS, FERN_VARIANTS, drawBush, drawCarcass, drawFernPatch, type FoodStage } from './foodArt';
+import { drawBroadsideGun, drawBrontosaurusBody, drawBrontosaurusNeck, drawBrontosaurusPlatform, drawBrontosaurusTail, drawBrontosaurusWhole, drawTailGun } from './brontosaurusArt';
+import { BUSH_VARIANTS, CARCASS_KINDS, FERN_VARIANTS, drawBush, drawCarcass, drawFernPatch, type FoodStage } from './foodArt';
 
 /** Rotation frames for parts that turn (bodies, heads, weapons). */
 export const DIRS = 64;
 export const BOLT_DIRS = 32;
 /** Carcasses lie still, so fewer rotation frames suffice. */
 export const CARCASS_DIRS = 16;
+/** Fish shadows are tiny; 16 directions look smooth enough. */
+export const FISH_DIRS = 16;
 export const FONT_KEY = 'pixelfont';
 
 function addStrip(scene: Phaser.Scene, key: string, src: HTMLCanvasElement, n: number): void {
-  const { canvas, size } = rotationStrip(src, n);
+  const { canvas, size, perRow } = rotationStrip(src, n);
   const tex = scene.textures.addCanvas(key, canvas)!;
-  for (let i = 0; i < n; i++) tex.add(i, 0, i * size, 0, size, size);
+  for (let i = 0; i < n; i++) tex.add(i, 0, (i % perRow) * size, Math.floor(i / perRow) * size, size, size);
 }
 
 function addImage(scene: Phaser.Scene, key: string, canvas: HTMLCanvasElement): void {
@@ -73,18 +77,28 @@ export function generateTextures(scene: Phaser.Scene): void {
       addStrip(scene, `velociraptor_armor_${key}`, drawRaptorSaddleArmor(pal), DIRS);
       addStrip(scene, `velociraptor_headArmor_${key}`, drawRaptorHeadArmor(pal), DIRS);
     }
+    for (const pose of [0, 1] as const) {
+      addStrip(scene, `brontosaurus_body_${key}_${pose}`, drawBrontosaurusBody(pal, pose), DIRS);
+      if (slot === 0) addStrip(scene, `brontosaurus_shadow_${pose}`, silhouette(drawBrontosaurusWhole(pal, pose), 'rgba(0,0,0,0.32)'), DIRS);
+    }
+    // The neck and head turn together, so the whole neck is the "head" part.
+    addStrip(scene, `brontosaurus_head_${key}`, drawBrontosaurusNeck(pal), DIRS);
+    addStrip(scene, `brontosaurus_tail_${key}`, drawBrontosaurusTail(pal), DIRS);
+    if (key !== 'wild') addStrip(scene, `brontosaurus_armor_${key}`, drawBrontosaurusPlatform(pal), DIRS);
     addStrip(scene, `rider_${key}`, drawRider(pal), DIRS);
     addImage(scene, `totem_${key}`, drawTotem(pal.tunic, pal.tunicLight));
   });
   addImage(scene, 'campStone', drawCampStone());
   addStrip(scene, 'weapon_sideCannon', drawSideCannon(), DIRS);
   addStrip(scene, 'weapon_raptorSideGun', drawRaptorSideGun(), DIRS);
+  addStrip(scene, 'weapon_broadsideGun', drawBroadsideGun(), DIRS);
+  addStrip(scene, 'weapon_tailGun', drawTailGun(), DIRS);
 
   const stages: FoodStage[] = [0, 1, 2];
   for (const st of stages) {
     for (let v = 0; v < BUSH_VARIANTS; v++) addImage(scene, `bush_${v}_${st}`, drawBush(v, st));
     for (let v = 0; v < FERN_VARIANTS; v++) addImage(scene, `fern_${v}_${st}`, drawFernPatch(v, st));
-    for (const kind of ['triceratops', 'velociraptor'] as const) addStrip(scene, `carcass_${kind}_${st}`, drawCarcass(kind, st), CARCASS_DIRS);
+    for (const kind of CARCASS_KINDS) addStrip(scene, `carcass_${kind}_${st}`, drawCarcass(kind, st), CARCASS_DIRS);
   }
   addImage(scene, 'leaf', drawDot(1, '#8ed05a'));
   addImage(scene, 'meat', drawDot(1, '#c83a2a'));
@@ -101,6 +115,18 @@ export function generateTextures(scene: Phaser.Scene): void {
     }
   }
   addImage(scene, 'trunk', drawTrunk());
+  // Living water.
+  addImage(scene, 'ripple', drawRipple());
+  addImage(scene, 'foamRing', drawFoamRing());
+  addImage(scene, 'droplet', drawDroplet());
+  for (let v = 0; v < WAVE_VARIANTS; v++) {
+    addImage(scene, `wave_${v}_deep`, drawWave(v, true));
+    addImage(scene, `wave_${v}_shallow`, drawWave(v, false));
+  }
+  for (const frame of [0, 1] as const) {
+    addStrip(scene, `fish_${frame}_0`, drawFish(frame, false), FISH_DIRS);
+    addStrip(scene, `fish_${frame}_1`, drawFish(frame, true), FISH_DIRS);
+  }
   addImage(scene, 'shadow', drawShadowEllipse(8, 5));
   addImage(scene, 'dot', drawDot(1, '#000000'));
   addImage(scene, 'spark', drawDot(1, '#ffffff'));

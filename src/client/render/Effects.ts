@@ -57,6 +57,11 @@ export class Effects {
     this.dust.explode(1, x, y);
   }
 
+  /** Tail whip on dry ground: a swept cloud of dust where the tail lands. */
+  whip(x: number, y: number): void {
+    this.dust.explode(7, x, y);
+  }
+
   /** Leap landing: a ring of dust and sparks. */
   slam(x: number, y: number): void {
     for (let i = 0; i < 12; i++) {

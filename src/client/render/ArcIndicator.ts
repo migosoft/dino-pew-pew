@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
-import type { Dino } from '../../sim/types';
+import type { Dino, Vec2 } from '../../sim/types';
 import { getDino } from '../../sim/defs/dinos';
 import { getWeapon } from '../../sim/defs/weapons';
-import { mountCoverage, mountFrame, muzzlePoint } from '../../sim/systems/aiming';
+import { mountCoverage, mountFrame, muzzlePoint, selectSideMounts } from '../../sim/systems/aiming';
 import { DEPTH } from './depth';
 
 const WEDGE_RADIUS = 64;
@@ -10,6 +10,8 @@ const WEDGE_RADIUS = 64;
 /**
  * Shows where the player's weapons can reach (faint wedge) and where they are
  * actually pointing right now (dotted line) — shots follow the dots, not the cursor.
+ * For side-firing platforms only the guns on the cursor's side are live; the others
+ * are drawn fainter and without their aim line.
  */
 export class ArcIndicator {
   private g: Phaser.GameObjects.Graphics;
@@ -18,27 +20,30 @@ export class ArcIndicator {
     this.g = scene.add.graphics().setDepth(DEPTH.arc);
   }
 
-  update(view: Dino | undefined): void {
+  update(view: Dino | undefined, aim?: Vec2): void {
     const g = this.g;
     g.clear();
     if (!view || !view.alive) return;
     const def = getDino(view.kind);
+    const live = def.fireMode === 'side' && aim ? new Set(selectSideMounts(view, def, aim)) : null;
     for (let i = 0; i < def.mounts.length; i++) {
+      const dim = live !== null && !live.has(i);
       const cov = mountCoverage(view, def, i);
       const pivot = mountFrame(view, def, i);
       const a0 = cov.center - cov.half;
       const a1 = cov.center + cov.half;
-      g.fillStyle(0xfff2c0, 0.13);
+      g.fillStyle(0xfff2c0, dim ? 0.05 : 0.13);
       g.slice(pivot.x, pivot.y, WEDGE_RADIUS, a0, a1, false);
       g.fillPath();
       // Dotted rim at the edges of the reachable arc.
       for (const a of [a0, a1]) {
         for (let t = 14; t <= WEDGE_RADIUS; t += 5) {
-          g.fillStyle(0xfff2c0, 0.4);
+          g.fillStyle(0xfff2c0, dim ? 0.15 : 0.4);
           g.fillRect(Math.round(pivot.x + Math.cos(a) * t), Math.round(pivot.y + Math.sin(a) * t), 1, 1);
         }
       }
 
+      if (dim) continue;
       const muzzle = muzzlePoint(view, def, i);
       const range = Math.min(getWeapon(def.mounts[i].weapon).range, 140);
       const cos = Math.cos(pivot.angle);

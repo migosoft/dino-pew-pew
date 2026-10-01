@@ -1,5 +1,6 @@
 import { Tile, type World } from '../../../sim/types';
 import { valueNoise } from '../../../sim/noise';
+import { tileAt } from '../../../sim/world';
 import { checker, ellipse, hash2, line, litShade, makeCanvas, outline, px, rect, seededRandom } from './pixel';
 
 const OUTLINE = '#17110d';
@@ -125,31 +126,48 @@ const TILE_COLORS: Record<number, string[]> = {
   [Tile.Dirt]: ['#8a6e48', '#7d6340', '#967a52', '#705a3a'],
   [Tile.Mud]: ['#5a4a34', '#4e402e', '#64533b', '#463a2a'],
   [Tile.Fern]: ['#3e7330', '#4a8236', '#35662a', '#56903c'],
+  // Shallow water: clear, with the sandy bottom showing through.
+  [Tile.Shallow]: ['#5a9c8c', '#64a694', '#528f82', '#6eae9a'],
+  [Tile.Deep]: ['#2a5a74', '#2d5f7a', '#285470', '#31667f'],
 };
+/** Deep water right next to the shallows is a little lighter (the bottom slopes down). */
+const DEEP_EDGE = ['#356e86', '#38738b', '#326882', '#3c788f'];
+const FOAM = '#cfe8df';
+const WET_SAND = '#5e5038';
 
 function hexToRgb(h: string): [number, number, number] {
   const n = parseInt(h.slice(1), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-/** Render the whole ground into one canvas, with organic tile borders and details. */
+const isWet = (t: number) => t === Tile.Shallow || t === Tile.Deep;
+
+/** Render the whole ground into one canvas, with organic tile borders, shorelines and details. */
 export function drawGround(world: World): HTMLCanvasElement {
-  const { width, height, tileSize, cols, rows, tiles, seed } = world;
+  const { width, height, seed } = world;
   const c = makeCanvas(width, height);
   const img = c.ctx.createImageData(width, height);
   const rgb: Record<number, [number, number, number][]> = {};
   for (const k of Object.keys(TILE_COLORS)) rgb[+k] = TILE_COLORS[+k].map(hexToRgb);
+  const deepEdge = DEEP_EDGE.map(hexToRgb);
+  const foam = hexToRgb(FOAM);
+  const wetSand = hexToRgb(WET_SAND);
+  // Terrain per pixel, with the same wobbled lookup the simulation uses.
+  const map = new Uint8Array(width * height);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) map[y * width + x] = tileAt(world, x, y);
+  const at = (x: number, y: number) => map[Math.min(height - 1, Math.max(0, y)) * width + Math.min(width - 1, Math.max(0, x))];
+  const near = (x: number, y: number, r: number, test: (t: number) => boolean) =>
+    test(at(x - r, y)) || test(at(x + r, y)) || test(at(x, y - r)) || test(at(x, y + r));
+
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      // Wobble the lookup so tile borders look organic instead of square.
-      const jx = (valueNoise(x / 7, y / 7, seed + 3) - 0.5) * 14;
-      const jy = (valueNoise(x / 7, y / 7, seed + 4) - 0.5) * 14;
-      const tx = Math.min(cols - 1, Math.max(0, Math.floor((x + jx) / tileSize)));
-      const ty = Math.min(rows - 1, Math.max(0, Math.floor((y + jy) / tileSize)));
-      const t = tiles[ty * cols + tx];
+      const t = map[y * width + x];
       const n = valueNoise(x / 3, y / 3, seed + 9) * 0.7 + hash2(x, y, seed) * 0.3;
-      const shades = rgb[t];
-      const col = shades[Math.min(3, Math.floor(n * 4))];
+      const shade = Math.min(3, Math.floor(n * 4));
+      let col = rgb[t][shade];
+      if (t === Tile.Deep && (near(x, y, 2, (o) => o === Tile.Shallow) || near(x, y, 4, (o) => o === Tile.Shallow))) col = deepEdge[shade];
+      else if (isWet(t) && near(x, y, 1, (o) => !isWet(o))) col = foam;
+      else if (!isWet(t) && near(x, y, 2, isWet)) col = wetSand;
       const i = (y * width + x) * 4;
       img.data[i] = col[0];
       img.data[i + 1] = col[1];
@@ -159,14 +177,16 @@ export function drawGround(world: World): HTMLCanvasElement {
   }
   c.ctx.putImageData(img, 0, 0);
 
-  // Ground details: grass tufts, ferns, pebbles, puddles, bones.
+  // Ground details: grass tufts, ferns, pebbles, puddles, bones, stones on the river bed.
   const rnd = seededRandom(seed * 7 + 1);
   const count = Math.floor((width * height) / 260);
   for (let k = 0; k < count; k++) {
     const x = Math.floor(rnd() * width);
     const y = Math.floor(rnd() * height);
-    const t = tiles[Math.floor(y / tileSize) * cols + Math.floor(x / tileSize)];
+    const t = map[y * width + x];
     const roll = rnd();
+    // Keep land details off the shoreline.
+    if (!isWet(t) && near(x, y, 3, isWet)) continue;
     if (t === Tile.Grass || t === Tile.GrassDark) {
       if (roll < 0.8) {
         px(c, x, y, '#86b452');
@@ -193,6 +213,22 @@ export function drawGround(world: World): HTMLCanvasElement {
       }
     } else if (t === Tile.Mud && roll < 0.35) {
       ellipse(c, x, y, 3 + rnd() * 3, 2 + rnd() * 1.5, (_nx, ny) => (ny < -0.3 ? '#5f7a86' : '#3e5562'));
+    } else if (t === Tile.Shallow && roll < 0.3 && !near(x, y, 2, (o) => o !== Tile.Shallow)) {
+      // Pebbles on the bottom.
+      px(c, x, y, roll < 0.15 ? '#4a7f72' : '#86b8a4');
+      if (roll < 0.08) px(c, x + 1, y, '#4a7f72');
+    }
+  }
+  // Reeds along the shores.
+  for (let k = 0; k < count / 6; k++) {
+    const x = Math.floor(rnd() * width);
+    const y = Math.floor(rnd() * height);
+    if (map[y * width + x] !== Tile.Shallow || !near(x, y, 4, (o) => !isWet(o))) continue;
+    for (let r = 0; r < 4; r++) {
+      const rx = x + Math.round((rnd() - 0.5) * 6);
+      const ry = y + Math.round((rnd() - 0.5) * 4);
+      line(c, rx, ry, rx + (rnd() < 0.5 ? -1 : 1), ry - 3, '#5e8a3a', 1);
+      px(c, rx, ry - 3, '#8ab452');
     }
   }
   return c.canvas;

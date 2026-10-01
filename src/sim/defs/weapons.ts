@@ -23,6 +23,28 @@ const WEAPONS: Record<string, WeaponDef> = {
     projectileKind: 'bolt',
     projectileRadius: 1.5,
   },
+  // The Brontosaurus' flank guns: only the side facing the cursor fires, two at a time.
+  broadsideGun: {
+    id: 'broadsideGun',
+    fireInterval: 0.35,
+    projectileSpeed: 260,
+    damage: 6,
+    spread: 0.04,
+    range: 260,
+    projectileKind: 'bolt',
+    projectileRadius: 2,
+  },
+  // The Brontosaurus' rear turret.
+  tailGun: {
+    id: 'tailGun',
+    fireInterval: 0.4,
+    projectileSpeed: 280,
+    damage: 8,
+    spread: 0.03,
+    range: 240,
+    projectileKind: 'bolt',
+    projectileRadius: 2,
+  },
 };
 
 export function getWeapon(id: string): WeaponDef {

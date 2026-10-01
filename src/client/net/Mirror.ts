@@ -28,6 +28,8 @@ export class Mirror {
   private events: TimedEvent[] = [];
   private offset: number | null = null;
   private projectiles = new Map<number, ClientProjectile>();
+  /** Where projectiles ran out of range since the last takeSpent() (for splashes). */
+  private spent: { x: number; y: number }[] = [];
 
   push(snap: SnapshotMsg, nowMs: number): void {
     if (this.snaps.length && snap.tick <= this.snaps[this.snaps.length - 1].tick) return;
@@ -107,6 +109,9 @@ export class Mirror {
       const k = tick - p.tick0 + 1;
       const speed = Math.hypot(p.vx, p.vy);
       if (speed * k * DT > p.range) {
+        const end = p.range / Math.max(speed, 1e-6);
+        this.spent.push({ x: p.x0 + p.vx * end, y: p.y0 + p.vy * end });
+        if (this.spent.length > 64) this.spent.shift();
         this.projectiles.delete(p.id);
         continue;
       }
@@ -115,6 +120,11 @@ export class Mirror {
       out.push({ id: p.id, ownerId: 0, team: p.team, x, y, px: x, py: y, vx: p.vx, vy: p.vy, traveled: 0, range: p.range, damage: 0, radius: 2, kind: 'bolt', alive: true });
     }
     return out;
+  }
+
+  /** End points of projectiles that ran out of range, since the last call. */
+  takeSpent(): { x: number; y: number }[] {
+    return this.spent.splice(0);
   }
 
   players(): PlayerInfo[] {

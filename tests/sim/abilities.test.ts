@@ -10,7 +10,7 @@ import { makeWildAi } from '../../src/sim/ai';
 
 /** Open ground with no obstacles or food. */
 function arena(): GameState {
-  const s = createMatch(11, { cols: 60, rows: 60 });
+  const s = createMatch(11, { cols: 60, rows: 60, water: false });
   s.world.obstacles = [];
   s.world.grid = s.world.grid.map(() => []);
   s.food = [];

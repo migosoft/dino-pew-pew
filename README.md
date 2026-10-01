@@ -28,13 +28,30 @@ your mount's ability (15 s cooldown), E opens the shop (in your base camp), hold
 
 ## Gameplay
 
-- **Mounts:** Triceratops (herbivore, tough, armored, a heavy cannon on each flank) or
-  Velociraptor (carnivore, fast, small, a light gun on each side of its metal saddle). Both guns
-  fire together, along their barrels, within the arc the mount allows.
-- **Abilities (right click, 15 s cooldown):** the Velociraptor leaps toward the cursor, over
-  rocks and dinos, and slams down on whoever is below. The Triceratops dashes straight ahead and
-  rams everything in its path. Wild dinos use them too, now and then. Every dino also has a natural melee attack (horns, claws) against whatever is
-  right in front of it.
+- **Mounts:**
+  - Triceratops: herbivore, tough, armored, a heavy cannon on each flank.
+  - Velociraptor: carnivore, fast, small, a light gun on each side of its metal saddle.
+  - Brontosaurus: herbivore, huge, slow and very tough. It carries a weapons platform on its
+    back, with a glass cockpit dome, two red gun pods on each flank and a turret at the rear.
+
+  Triceratops and Velociraptor fire both guns together, along their barrels, within the arc
+  the mount allows. The Brontosaurus fires only the guns on the side of the cursor: left,
+  right or behind. Nothing fires straight ahead, because its neck is in the way.
+- **Abilities (right click, 15 s cooldown):**
+  - The Velociraptor leaps toward the cursor, over rocks and dinos, and slams down on whoever
+    is below.
+  - The Triceratops dashes straight ahead and rams everything in its path.
+  - The Brontosaurus sweeps its tail through everything behind it, and shoves it away.
+
+  Wild dinos use them too, now and then. Every dino also has a natural melee attack (horns,
+  claws, stamping feet) against whatever is right in front of it.
+- **Water:** lakes and winding rivers cross the 3072 px world.
+  - Shallow water, at the shores and at fords, doesn't slow anyone down.
+  - Deep water slows small dinos a lot and big ones only a little: the Velociraptor keeps 40% of
+    its speed, the Triceratops 70%, the Brontosaurus 90%. A leap passes over it.
+  - Calm wild dinos walk around lakes; hunting or fleeing ones wade straight in.
+  - The water has little waves and fish shadows that dart away, and every footstep leaves a
+    ripple.
 - **Wild dinosaurs** without riders roam the world (more when more riders are online).
   Herbivores graze and charge (or flee from) attackers; raptors hunt riders outside their camp.
 - **Eating heals:** stand still next to food. Herbivores eat bushes and ferns — and trees, if
@@ -64,7 +81,9 @@ Add `?debug` to the URL to expose `window.dinoriders` (client state) for debuggi
 Dinos are data in [src/sim/defs/dinos.ts](src/sim/defs/dinos.ts). Each weapon `MountDef` says
 where it sits (`parent: 'body' | 'head'`, `offset`), its rest direction (`baseAngle`) and how
 far it can swivel (`arcHalf`). Projectiles always leave along the barrel's real direction.
-A Diplodocus with broadside guns would be two body mounts at `baseAngle` ±90°; see the
-test-only definition in [tests/sim/aiming.test.ts](tests/sim/aiming.test.ts). New species also
-need sprites drawn in `src/client/render/textures/` under the keys `<kind>_body_<palette>_<pose>`,
-`<kind>_shadow_<pose>` and (if it has a head) `<kind>_head_<palette>` (palette = `t0`..`t3`).
+The Brontosaurus is the example for broadside guns: body mounts at `baseAngle` ±90° and 180°,
+with `fireMode: 'side'` so that only the guns whose arc holds the cursor fire. `wadeSpeed` sets
+how much speed a species keeps in deep water. New species also need sprites drawn in
+`src/client/render/textures/` under the keys `<kind>_body_<palette>_<pose>`, `<kind>_shadow_<pose>`
+and (if it has a head) `<kind>_head_<palette>` (palette = `t0`..`t3`). A species with a `tail`
+can also have a `<kind>_tail_<palette>` part that swings during a whip.

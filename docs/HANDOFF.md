@@ -1,6 +1,6 @@
 # Dinoriders: Handoff
 
-**Status (2026-10-01, end of session):** every requested feature is implemented. All 82 tests pass, and the type-check and build are clean. Phases 0–6 are committed on `master`. Phase 6 (armored Velociraptor with twin side guns, raptor leap, triceratops dash) has been checked in a browser, and the Docker image on :8080 has been rebuilt with it. See [Latest session](#latest-session-phase-6).
+**Status (2026-10-01, end of session):** every requested feature is implemented. All 97 tests pass, and the type-check and build are clean. Phases 0–7 are committed on `master`. Phase 7 (3072 px map with lakes and rivers, wading, the playable Brontosaurus with its weapons platform and tail whip, living water) has been checked in a browser. The Docker image on :8080 has **not** been rebuilt yet. See [Latest session](#latest-session-phase-7).
 
 This document gives the state of the project, how it fits together, and what to watch out for. For how to play and run it, see [README.md](../README.md). The design history is in [docs/superpowers/specs/](superpowers/specs/).
 
@@ -8,7 +8,7 @@ This document gives the state of the project, how it fits together, and what to 
 A top-down pixel-art multiplayer shooter. Players ride armed dinosaurs in one persistent world that never ends.
 - Opening the URL shows a join screen: join an existing team or found a new one (up to 4 teams), then pick a mount.
 - Each team has a base camp. You respawn there, nobody can hurt you inside it, and its shop is there.
-- Riderless **wild dinosaurs** (Triceratops and Velociraptor) roam the world. They are a threat, a source of money, and they leave carcasses that carnivores eat.
+- Riderless **wild dinosaurs** (Triceratops, Velociraptor and Brontosaurus) roam the world. They are a threat, a source of money, and they leave carcasses that carnivores eat.
 - **Diets:** standing still next to the right food heals you.
   - Herbivores eat bushes and ferns; only large herbivores also eat trees.
   - Carnivores eat carcasses.
@@ -25,9 +25,55 @@ A top-down pixel-art multiplayer shooter. Players ride armed dinosaurs in one pe
 | `6c9228c` | 4: money, upgrades, base camp shop |
 | `4efb5c5` | handoff document |
 | "Phase 5" | 5: dino-claw menu cursor, armored Triceratops with twin side cannons, `?preview` art sheet |
-| "Phase 6" (latest) | 6: armored Velociraptor with twin side guns, right-click abilities (raptor leap, triceratops dash) |
+| "Phase 6" | 6: armored Velociraptor with twin side guns, right-click abilities (raptor leap, triceratops dash) |
+| "Phase 7" (latest) | 7: 3072 px map, lakes and rivers, wading, Brontosaurus with weapons platform and tail whip, living water |
 
-## Latest session: phase 6
+## Latest session: phase 7
+**What was done** (the user supplied a Dino Riders box image of an armored Brontosaurus):
+1. **Bigger map with water.**
+   - The default map is now 192×192 tiles = **3072 px** (`DEFAULT_TILES` in `worldgen.ts`). Base camps sit at about 1/8 of the map from the edge (`baseInset`, at least 260 px, so small test maps are unchanged).
+   - New tiles `Tile.Shallow` and `Tile.Deep`, made by `waterLayer`:
+     - **Lakes** are cut from a slow noise at percentiles (`LAKE_DEEP_SHARE`, `LAKE_SHALLOW_SHARE`), so every seed gets about the same amount of lake.
+     - **Rivers** follow a contour line of a warped noise. **Fords** break up their deep core.
+     - About 25% of each map is water. Everything within `BASE_DRY` of a camp is dry.
+   - **`tileAt(world, x, y)`** (`world.ts`) is the one terrain lookup, with the organic border wobble. The ground texture (`drawGround`) uses it too, so the shoreline you see is the one the sim uses. Use `isWater` / `isDeepWater` rather than indexing `world.tiles` directly.
+   - **Obstacles are spread out:** the scatter cell is 56, and any two obstacles are at least `OBSTACLE_GAP` (34 px) apart, wide enough for the Brontosaurus. Nothing (rocks, trees, plants, carcasses) is placed in water.
+   - `WorldGenOptions.water: false` turns water off. The ability and Brontosaurus tests use it for dry arenas.
+2. **Wading.**
+   - `moveDino` takes a `speedCap`. `sim.ts` passes `terrainSpeedFactor`: `wadeSpeed` in deep water (default 0.6), 1 elsewhere.
+   - Per species: raptor 0.4, triceratops 0.7, brontosaurus 0.9. Shallow water has no effect, and the speed above the cap bleeds off at `decel`.
+   - A dash is scaled the same way. A leap is airborne and ignores water.
+   - Calm wild dinos (wander, graze) steer around deep water (`clearHeading` in `ai.ts`). In a 2-minute headless run they spent 0.1% of their time in deep water, which covers 10% of the map.
+3. **Brontosaurus** (`dinos.ts`): 220 HP, speed 50, radius 15, bounty 40, a wild herbivore 1 time in 4.
+   - **Neck and head** are one `head` part that pivots at the shoulders. `HeadDef.under` draws it below the body.
+   - **`TailDef`**: the tail is its own sprite that sways while walking and swings during the whip.
+   - **`seat`** puts the rider sprite in the cockpit dome.
+   - **Weapons platform:** four `broadsideGun` mounts (±90°, two per flank) and a rear `tailGun` (180°).
+     - **`fireMode: 'side'`**: `selectSideMounts` (`aiming.ts`) fires every mount whose arc holds the cursor. Cursor on the left: the left pair fires; behind: the tail gun; straight ahead: nothing.
+     - `ArcIndicator` dims the wedges that are not live.
+   - **Tail whip** (`kind: 'whip'`): the dino keeps walking while it runs. At half-way it hits each hostile within ±80° of the tail direction once: 22 damage and a 20 px shove, camp immunity as for the dash. It emits a `whip` event.
+     - Wild Brontosaurs whip at hostiles right behind them (`wantsWhip` in `ai.ts`, checked on top of whatever `decide` returned).
+4. **Living water** (`src/client/render/WaterView.ts`), all client-side:
+   - Wave crests are pre-scattered over the water in 96 px cells, and only the visible cells are drawn from a sprite pool.
+   - Fish shadows live in deep water near the camera. Their number scales with how much deep water is in view. They turn back at the edge of deep water and dart away from dinos and fresh ripples.
+   - Ripples: one per footstep (alternating feet, sized by radius), a V wake behind dinos moving through deep water, slow rings around dinos standing in it.
+   - Splashes for leap landings, dashes and whips in water, and for bolts that run out of range over water (`Mirror.takeSpent`).
+   - `DinoView.update(d, wading)` hides the shadow in deep water (fainter in the shallows) and shows a foam ring.
+5. **Sprite sheets** (`rotationStrip`) now wrap into rows at 4096 px, because the Brontosaurus frames would make a single strip too wide for some GPUs.
+6. **Tests:** `tests/sim/water.test.ts` covers wade speeds, the gradual slowdown, water coverage, dry camps and nothing in water. `tests/sim/brontosaurus.test.ts` covers side fire, the whip and wild whips. `world.test.ts` covers the map size and obstacle gap.
+7. **Verification:**
+   - The art was reviewed with `/?preview=brontosaurus`. `PreviewScene` cells now scale with the species' radius.
+   - The game was driven over CDP: a Brontosaurus wading into a lake, firing its left pods and whipping; a raptor in the shallows. Frame rate stayed at 60 fps.
+   - `drawGround` for 3072 px takes about 1.3 s in headless Edge.
+
+**Balance knobs:**
+- `wadeSpeed` per species.
+- `LAKE_*_SHARE` and the river widths in `waterLayer`.
+- `OBSTACLE_GAP`.
+- The Brontosaurus `ability` and `broadsideGun`/`tailGun` values.
+- `wildTarget` in `ecology.ts` (now `min(70, 18 + 4·players)`).
+
+## Phase 6 (previous session)
 **What was done** (based on a second Dino Riders box image the user supplied: a Deinonychus ridden by Antor):
 1. **Armored Velociraptor.**
    - Ridden raptors wear a small riveted metal saddle with team-color trim and struts to both flanks (`drawRaptorSaddleArmor`), plus a silver face mask with a grille (`drawRaptorHeadArmor`). Wild raptors are unarmored.
@@ -69,7 +115,7 @@ A top-down pixel-art multiplayer shooter. Players ride armed dinosaurs in one pe
 - `ABILITY_CHANCE` and the range/arc checks in `wantsAbility` (`ai.ts`).
 - `DASH_ARC` and `DASH_KNOCKBACK` in `abilities.ts`.
 
-## Phase 5 (previous session)
+## Phase 5
 - **Dino-claw menu cursor.**
   - `JoinScene` sets the default cursor; `GameScene.create` resets it to `'none'`, because the cursor is global across scenes.
   - The art is `drawClawCursor` (`worldArt.ts`), and the CSS value comes from `src/client/cursor.ts`.
@@ -108,10 +154,11 @@ tests/       vitest: sim/, net/, server/ (the server tests open real WebSockets 
 ## Where things live
 | You want to… | Look at |
 |---|---|
-| Add or tune a species | `src/sim/defs/dinos.ts`, `src/sim/defs/weapons.ts`. Sprites go in `src/client/render/textures/` and are registered in `textures/index.ts` under the keys `<kind>_body_<palette>_<pose>`, `<kind>_shadow_<pose>`, `<kind>_head_<palette>`, where palette is `t0`..`t3` or `wild`. Also add the species to the `HERBIVORES`/`CARNIVORES` lists in `ecology.ts` and to `drawCarcass` (`FoodView` falls back to Triceratops art). |
+| Add or tune a species | `src/sim/defs/dinos.ts`, `src/sim/defs/weapons.ts`. Sprites go in `src/client/render/textures/` and are registered in `textures/index.ts` under the keys `<kind>_body_<palette>_<pose>`, `<kind>_shadow_<pose>`, `<kind>_head_<palette>`, where palette is `t0`..`t3` or `wild`. Also add the species to the `HERBIVORES`/`CARNIVORES` lists in `ecology.ts` and to `CARCASS_KINDS`/`drawCarcass` in `foodArt.ts` (`FoodView` falls back to Triceratops art). |
 | Give a species rider armor | Register `<kind>_armor_<palette>` (body overlay) and/or `<kind>_headArmor_<palette>` (head overlay) for `t0`..`t3` in `textures/index.ts`. `DinoView` shows them on ridden dinos whenever the textures exist. The Triceratops versions are in `dinoArt.ts`. Open `/?preview` (or `/?preview=velociraptor&zoom=3&focus=row,col`) to see every palette and heading. |
-| Give a species an ability | `ability` on the `DinoDef` (`kind: 'leap' \| 'dash'`). The logic is in `src/sim/systems/abilities.ts`, wild use in `wantsAbility` (`ai.ts`), and the leap rendering in `DinoView`. A new kind needs a branch in `updateAbility`. |
-| Fire all guns at once | `volley: true` on the `DinoDef` (used by both species' twin side guns). Without it, only the mounts that are on target fire (`selectFiringMounts`). |
+| Give a species an ability | `ability` on the `DinoDef` (`kind: 'leap' \| 'dash' \| 'whip'`). The logic is in `src/sim/systems/abilities.ts`, wild use in `wantsAbility`/`wantsWhip` (`ai.ts`), and the leap and whip rendering in `DinoView`. A new kind needs a branch in `updateAbility`. |
+| Fire all guns at once | `volley: true` on the `DinoDef` (used by both species' twin side guns). `fireMode: 'side'` (Brontosaurus) fires every mount whose arc holds the cursor (`selectSideMounts`). Without either, only the mounts that are on target fire (`selectFiringMounts`). |
+| Tune water and terrain | `waterLayer`, `OBSTACLE_GAP` and `DEFAULT_TILES` in `src/sim/worldgen.ts`, and `wadeSpeed` per species. The terrain lookup is `tileAt` in `world.ts`. Water visuals: `WaterView.ts`, `waterArt.ts`, and the water colors in `drawGround` (`worldArt.ts`). |
 | Change the diet rule | `canEat` in `src/sim/systems/feeding.ts`. Food amounts and regrowth are in the `FOOD` table in the same file. |
 | Tune weapon aim limits | `MountDef` (`baseAngle`, `arcHalf`), `HeadDef.maxYaw`. The aim maths is in `systems/aiming.ts`. |
 | Tune wild population or behaviour | `src/sim/ecology.ts` (`wildTarget`, spawn rules), `src/sim/ai.ts` (`HUNT_RANGE`, `PROVOKED_TIME`, …) |
@@ -126,7 +173,7 @@ tests/       vitest: sim/, net/, server/ (the server tests open real WebSockets 
 ```
 npm install
 npm run dev          # server :8080 (tsx watch) + Vite :5173 (proxies /api and /ws); play at :5173
-npm test             # 82 tests, about 1.5 s
+npm test             # 97 tests, about 2 s
 npm run build        # tsc + vite (dist/) + esbuild server bundle (dist-server/server.cjs)
 docker compose up --build -d   # production, http://localhost:8080
 ```

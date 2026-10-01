@@ -6,6 +6,7 @@ import type { PlayerInfo, TimedEvent, WelcomeMsg } from '../../net/protocol';
 import { NetClient, gameSocketUrl } from '../net/NetClient';
 import { PlayerInput } from '../input/playerInput';
 import { WorldView } from '../render/WorldView';
+import { WaterView, wadingOf } from '../render/WaterView';
 import { DinoView } from '../render/DinoView';
 import { FoodView } from '../render/FoodView';
 import { getDino } from '../../sim/defs/dinos';
@@ -31,6 +32,7 @@ export class GameScene extends Phaser.Scene {
   private world: World | null = null;
   private playerInput!: PlayerInput;
   private worldView!: WorldView;
+  private waterView!: WaterView;
   private dinoViews = new Map<number, DinoView>();
   private projectileView!: ProjectileView;
   private foodView!: FoodView;
@@ -68,6 +70,7 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.net.close();
       this.worldView?.destroy();
+      this.waterView?.destroy();
     });
     // Debug handle for the browser console / test drivers (dev builds, or any build with ?debug).
     if (import.meta.env.DEV || new URLSearchParams(location.search).has('debug')) {
@@ -79,6 +82,7 @@ export class GameScene extends Phaser.Scene {
     this.status.setText('');
     this.world = generateWorld(w.seed);
     this.worldView = new WorldView(this, this.world);
+    this.waterView = new WaterView(this, this.world);
     this.foodView = new FoodView(this, this.world.food);
     this.projectileView = new ProjectileView(this);
     this.fx = new Effects(this);
@@ -104,7 +108,7 @@ export class GameScene extends Phaser.Scene {
     cam.setRoundPixels(true);
   }
 
-  update(time: number): void {
+  update(time: number, delta: number): void {
     if (this.net.status === 'closed') return this.leave(this.net.error ?? 'CONNECTION LOST');
     if (!this.world || !this.net.mirror.ready) return;
     const mirror = this.net.mirror;
@@ -129,15 +133,24 @@ export class GameScene extends Phaser.Scene {
     }
     if (time - this.lastDashFx > 40) {
       this.lastDashFx = time;
-      for (const d of dinos) if (d.abilityT >= 0 && getDino(d.kind).ability?.kind === 'dash') this.fx.dashTrail(d.x - Math.cos(d.heading) * 8, d.y - Math.sin(d.heading) * 8);
+      for (const d of dinos) {
+        if (d.abilityT < 0 || getDino(d.kind).ability?.kind !== 'dash') continue;
+        const tx = d.x - Math.cos(d.heading) * 8;
+        const ty = d.y - Math.sin(d.heading) * 8;
+        // Charging through water throws up spray instead of dust.
+        if (this.waterView.isWet(tx, ty)) this.waterView.splash(tx, ty, 10);
+        else this.fx.dashTrail(tx, ty);
+      }
     }
     this.syncDinoViews(dinos);
+    this.waterView.update(delta, dinos);
+    for (const p of mirror.takeSpent()) this.waterView.splash(p.x, p.y, 6);
     const meInfo = players.find((p) => p.id === me);
     const myDino = dinos.find((d) => d.playerId === me);
     this.projectileView.update(mirror.projectilesAt(rt), meInfo?.team);
     this.worldView.updateBases(teams);
     this.worldView.update(myDino);
-    this.arc.update(myDino);
+    this.arc.update(myDino, this.playerInput.aimWorld());
     this.followCamera(myDino ?? teams.find((t) => t.id === meInfo?.team)?.base);
 
     const cam = this.cameras.main;
@@ -158,8 +171,9 @@ export class GameScene extends Phaser.Scene {
     for (const d of dinos) {
       seen.add(d.id);
       const v = this.dinoViews.get(d.id);
-      if (v) v.update(d);
-      else this.dinoViews.set(d.id, new DinoView(this, d, paletteKey(d.team, teams)));
+      const wading = wadingOf(this.world!, d);
+      if (v) v.update(d, wading);
+      else this.dinoViews.set(d.id, new DinoView(this, d, paletteKey(d.team, teams))).get(d.id)!.update(d, wading);
     }
     for (const [id, v] of this.dinoViews) {
       if (seen.has(id)) continue;
@@ -185,11 +199,21 @@ export class GameScene extends Phaser.Scene {
         if (this.dinoViews.get(e.targetId)?.lastView.playerId === this.net.welcome!.playerId) this.cameras.main.shake(100, 0.004);
         break;
       case 'ability':
-        this.fx.takeOff(e.x, e.y);
+        if (e.kind === 'whip') break;
+        if (this.waterView.isWet(e.x, e.y)) this.waterView.splash(e.x, e.y, 14);
+        else this.fx.takeOff(e.x, e.y);
         break;
+      case 'whip': {
+        if (this.waterView.isWet(e.x, e.y)) this.waterView.splash(e.x, e.y, 20);
+        else this.fx.whip(e.x, e.y);
+        const cam = this.cameras.main;
+        if (cam.worldView.contains(e.x, e.y)) cam.shake(90, 0.003);
+        break;
+      }
       case 'slam': {
         const cam = this.cameras.main;
-        this.fx.slam(e.x, e.y);
+        if (this.waterView.isWet(e.x, e.y)) this.waterView.splash(e.x, e.y, 24);
+        else this.fx.slam(e.x, e.y);
         if (cam.worldView.contains(e.x, e.y)) cam.shake(140, 0.005);
         break;
       }

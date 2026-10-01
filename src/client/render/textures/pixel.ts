@@ -103,20 +103,27 @@ export function silhouette(src: HTMLCanvasElement, color: string): HTMLCanvasEle
 
 /**
  * Pre-render `n` rotations of a sprite (pivot = canvas center, art facing +x) using
- * nearest-neighbour sampling, laid out in a horizontal strip of square frames.
+ * nearest-neighbour sampling, laid out row by row in a sheet of square frames, `perRow`
+ * frames wide (frame f sits at column f % perRow, row floor(f / perRow)). Wrapping keeps
+ * big sprites under the 4096 px texture limit of some GPUs.
  */
-export function rotationStrip(src: HTMLCanvasElement, n: number): { canvas: HTMLCanvasElement; size: number } {
+export function rotationStrip(src: HTMLCanvasElement, n: number): { canvas: HTMLCanvasElement; size: number; perRow: number } {
   const sw = src.width;
   const sh = src.height;
   const size = Math.ceil(Math.hypot(sw, sh)) + 2;
-  const out = makeCanvas(size * n, size);
+  const perRow = Math.max(1, Math.min(n, Math.floor(4096 / size)));
+  const rows = Math.ceil(n / perRow);
+  const W = size * perRow;
+  const out = makeCanvas(W, size * rows);
   const sctx = src.getContext('2d')!;
   const sdata = sctx.getImageData(0, 0, sw, sh).data;
-  const odata = out.ctx.createImageData(size * n, size);
+  const odata = out.ctx.createImageData(W, size * rows);
   const scx = sw / 2;
   const scy = sh / 2;
   const half = size / 2;
   for (let f = 0; f < n; f++) {
+    const fx = (f % perRow) * size;
+    const fy = Math.floor(f / perRow) * size;
     const a = (f / n) * Math.PI * 2;
     const c = Math.cos(a);
     const s = Math.sin(a);
@@ -130,7 +137,7 @@ export function rotationStrip(src: HTMLCanvasElement, n: number): { canvas: HTML
         if (sx < 0 || sy < 0 || sx >= sw || sy >= sh) continue;
         const si = (sy * sw + sx) * 4;
         if (sdata[si + 3] === 0) continue;
-        const oi = (y * size * n + f * size + x) * 4;
+        const oi = ((fy + y) * W + fx + x) * 4;
         odata.data[oi] = sdata[si];
         odata.data[oi + 1] = sdata[si + 1];
         odata.data[oi + 2] = sdata[si + 2];
@@ -139,7 +146,7 @@ export function rotationStrip(src: HTMLCanvasElement, n: number): { canvas: HTML
     }
   }
   out.ctx.putImageData(odata, 0, 0);
-  return { canvas: out.canvas, size };
+  return { canvas: out.canvas, size, perRow };
 }
 
 /** Frame index in a rotation strip of `n` frames for a world angle. */

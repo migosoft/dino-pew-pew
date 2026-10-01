@@ -4,6 +4,7 @@ import type { CarcassTuple, PlantTuple } from '../../net/protocol';
 import { frameForAngle } from './textures/pixel';
 import { CARCASS_DIRS } from './textures';
 import { DEPTH } from './depth';
+import { CARCASS_KINDS } from './textures/foodArt';
 
 /** 0 = full, 1 = half eaten, 2 = nearly gone. */
 function stageOf(food: number, maxFood: number): 0 | 1 | 2 {
@@ -49,7 +50,7 @@ export class FoodView {
     for (const [id, species, x, y, heading, food, maxFood] of list) {
       seen.add(id);
       const stage = stageOf(food, maxFood);
-      const kind = species === 'velociraptor' ? 'velociraptor' : 'triceratops';
+      const kind = (CARCASS_KINDS as readonly string[]).includes(species) ? species : 'triceratops';
       let c = this.carcasses.get(id);
       if (!c) {
         const sprite = this.scene.add.image(x, y, `carcass_${kind}_${stage}`, frameForAngle(heading / 100, CARCASS_DIRS)).setDepth(DEPTH.decal + 2);

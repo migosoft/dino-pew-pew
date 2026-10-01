@@ -4,11 +4,13 @@ import { DEG, angleDiff, angleTo, clamp, lerp } from '../math';
 import { isAirborne } from '../world';
 import { isInOwnBase } from '../players';
 import { resolveObstacles } from './collision';
+import { terrainSpeedFactor } from './movement';
 import { applyDamage } from './damage';
 import { isHostile } from './melee';
 
 // Species abilities on right mouse: the raptor leaps toward the aim point and slams down,
-// the triceratops dashes straight ahead and rams whoever is in the way.
+// the triceratops dashes straight ahead and rams whoever is in the way, and the brontosaurus
+// sweeps its tail through everything behind it.
 
 /** Half-angle in front of a dashing dino within which it rams others. */
 const DASH_ARC = 70 * DEG;
@@ -41,9 +43,17 @@ export function updateAbility(state: GameState, d: Dino, dt: number): boolean {
   if (d.abilityT < 0) return false;
   const def = getDino(d.kind);
   const ab = def.ability!;
+  const before = d.abilityT;
   d.abilityT += dt;
   // Epsilon: whole ticks summed in floating point fall just short of e.g. 0.4 s.
   const done = d.abilityT >= ab.duration - 1e-6;
+  if (ab.kind === 'whip') {
+    // The tail lands half-way through the swing; the dino keeps walking meanwhile.
+    const strike = ab.duration / 2;
+    if (before < strike && d.abilityT >= strike - 1e-6) whip(state, d, def.radius, ab);
+    if (done) d.abilityT = -1;
+    return false;
+  }
   if (ab.kind === 'leap') {
     const t = Math.min(1, d.abilityT / ab.duration);
     const len = Math.hypot(d.abilityTo.x - d.abilityFrom.x, d.abilityTo.y - d.abilityFrom.y);
@@ -59,8 +69,8 @@ export function updateAbility(state: GameState, d: Dino, dt: number): boolean {
     }
     return true;
   }
-  // Dash.
-  const speed = ab.speed ?? def.maxSpeed;
+  // Dash: deep water slows it like any other movement.
+  const speed = (ab.speed ?? def.maxSpeed) * terrainSpeedFactor(state.world, d, def);
   d.speed = speed;
   d.x += Math.cos(d.heading) * speed * dt;
   d.y += Math.sin(d.heading) * speed * dt;
@@ -100,6 +110,27 @@ function ram(state: GameState, d: Dino, r: number, ab: AbilityDef): void {
     applyDamage(state, b, ab.damage * d.damageMul, d.id);
     b.x += Math.cos(d.heading) * DASH_KNOCKBACK;
     b.y += Math.sin(d.heading) * DASH_KNOCKBACK;
+    resolveObstacles(state, b);
+  }
+}
+
+/** Tail whip: damage and shove every hostile behind the dino, except those safe in their camp. */
+function whip(state: GameState, d: Dino, r: number, ab: AbilityDef): void {
+  const back = d.heading + Math.PI;
+  const tail = getDino(d.kind).tail?.offset.x ?? -r;
+  state.events.push({ type: 'whip', dinoId: d.id, x: d.x + Math.cos(back) * (-tail + 14), y: d.y + Math.sin(back) * (-tail + 14) });
+  for (const b of state.dinos) {
+    if (b === d || !b.alive || isAirborne(b) || !isHostile(d, b) || isInOwnBase(state, b) || d.abilityHit.includes(b.id)) continue;
+    const reach = r + getDino(b.kind).radius + ab.hitReach;
+    if ((b.x - d.x) ** 2 + (b.y - d.y) ** 2 > reach * reach) continue;
+    const dir = angleTo(d, b);
+    if (Math.abs(angleDiff(dir, back)) > (ab.arc ?? Math.PI / 2)) continue;
+    d.abilityHit.push(b.id);
+    state.events.push({ type: 'melee', attackerId: d.id, targetId: b.id, x: b.x, y: b.y });
+    applyDamage(state, b, ab.damage * d.damageMul, d.id);
+    const shove = ab.knockback ?? 0;
+    b.x += Math.cos(dir) * shove;
+    b.y += Math.sin(dir) * shove;
     resolveObstacles(state, b);
   }
 }
