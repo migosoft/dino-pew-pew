@@ -19,7 +19,7 @@ export const BASE_CLEAR = 140;
 /** Water never comes closer than this to a base camp center. */
 export const BASE_DRY = BASE_CLEAR + 60;
 /** Minimum free gap between any two obstacles: wide enough for the biggest dino to pass. */
-export const OBSTACLE_GAP = 34;
+export const OBSTACLE_GAP = 48;
 /** Old carcasses lying around at world creation. */
 export const MIN_WORLD_CARCASSES = 6;
 export const MAX_WORLD_CARCASSES = 10;

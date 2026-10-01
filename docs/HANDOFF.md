@@ -37,14 +37,14 @@ A top-down pixel-art multiplayer shooter. Players ride armed dinosaurs in one pe
      - **Rivers** follow a contour line of a warped noise. **Fords** break up their deep core.
      - About 25% of each map is water. Everything within `BASE_DRY` of a camp is dry.
    - **`tileAt(world, x, y)`** (`world.ts`) is the one terrain lookup, with the organic border wobble. The ground texture (`drawGround`) uses it too, so the shoreline you see is the one the sim uses. Use `isWater` / `isDeepWater` rather than indexing `world.tiles` directly.
-   - **Obstacles are spread out:** the scatter cell is 56, and any two obstacles are at least `OBSTACLE_GAP` (34 px) apart, wide enough for the Brontosaurus. Nothing (rocks, trees, plants, carcasses) is placed in water.
+   - **Obstacles are spread out:** the scatter cell is 56, and any two obstacles are at least `OBSTACLE_GAP` (48 px) apart, wide enough for the Brontosaurus. Nothing (rocks, trees, plants, carcasses) is placed in water.
    - `WorldGenOptions.water: false` turns water off. The ability and Brontosaurus tests use it for dry arenas.
 2. **Wading.**
    - `moveDino` takes a `speedCap`. `sim.ts` passes `terrainSpeedFactor`: `wadeSpeed` in deep water (default 0.6), 1 elsewhere.
    - Per species: raptor 0.4, triceratops 0.7, brontosaurus 0.9. Shallow water has no effect, and the speed above the cap bleeds off at `decel`.
    - A dash is scaled the same way. A leap is airborne and ignores water.
    - Calm wild dinos (wander, graze) steer around deep water (`clearHeading` in `ai.ts`). In a 2-minute headless run they spent 0.1% of their time in deep water, which covers 10% of the map.
-3. **Brontosaurus** (`dinos.ts`): 220 HP, speed 50, radius 15, bounty 40, a wild herbivore 1 time in 4.
+3. **Brontosaurus** (`dinos.ts`): 220 HP, speed 50, radius 22, bounty 40, a wild herbivore 1 time in 4. Its art is drawn at `BRONTO_SCALE` (1.5) in `brontosaurusArt.ts`, and the sizes in `dinos.ts` (radius, head, tail, seat, mounts, whip reach) use the same factor, so change them together.
    - **Neck and head** are one `head` part that pivots at the shoulders. `HeadDef.under` draws it below the body.
    - **`TailDef`**: the tail is its own sprite that sways while walking and swings during the whip.
    - **`seat`** puts the rider sprite in the cockpit dome.
