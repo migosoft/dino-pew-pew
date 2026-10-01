@@ -53,8 +53,20 @@ export type Diet = 'herbivore' | 'carnivore' | 'omnivore';
 /** Small species cannot reach tree foliage and leave smaller carcasses. */
 export type BodySize = 'small' | 'large';
 
+/** Natural attack (horns, claws, jaws): automatic against a hostile right in front. */
+export interface MeleeDef {
+  damage: number;
+  /** Extra distance beyond touching (sum of radii). */
+  reach: number;
+  /** Half-angle in front of the body, radians. */
+  arc: number;
+  /** Seconds between strikes. */
+  interval: number;
+}
+
 export interface DinoDef {
   kind: string;
+  melee: MeleeDef;
   diet: Diet;
   size: BodySize;
   /** HP regained per second while eating. */
@@ -95,6 +107,17 @@ export interface MountState {
   cooldown: number;
 }
 
+export interface WildAi {
+  mode: 'wander' | 'graze' | 'forage' | 'flee' | 'charge' | 'hunt';
+  /** Dino being chased or fled from. */
+  target: number | null;
+  /** Seconds left in the current mode/decision. */
+  timer: number;
+  wanderHeading: number;
+  sideDir: number;
+  stuckTime: number;
+}
+
 export interface Dino {
   id: number;
   kind: string;
@@ -114,7 +137,13 @@ export interface Dino {
   alive: boolean;
   /** Seconds the hit flash remains visible. */
   hitFlash: number;
-  bumpCooldown: number;
+  meleeCooldown: number;
+  /** Who damaged this dino last (wild AI reacts to it). */
+  lastAttacker: number | null;
+  /** Seconds since last damaged. */
+  sinceHit: number;
+  /** Riderless dinos think for themselves. */
+  ai?: WildAi;
   /** Stat multipliers (upgrades). */
   damageMul: number;
   fireIntervalMul: number;
@@ -225,6 +254,7 @@ export type GameEvent =
       range: number;
     }
   | { type: 'hit'; projectileId: number; x: number; y: number; targetId: number }
+  | { type: 'melee'; attackerId: number; targetId: number; x: number; y: number }
   | { type: 'impact'; projectileId: number; x: number; y: number }
   | { type: 'death'; dinoId: number; x: number; y: number; team: Team }
   | { type: 'kill'; killer: number | null; victim: number | null; victimKind: string }
@@ -262,6 +292,9 @@ export interface GameState {
   teams: TeamState[];
   players: PlayerState[];
   food: FoodSource[];
+  /** Wild dinosaurs roam and respawn (off in most unit tests). */
+  wildlife: boolean;
+  wildSpawnTimer: { t: number };
 }
 
 export const TICK_RATE = 60;

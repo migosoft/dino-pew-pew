@@ -10,7 +10,7 @@ let match: Match | null = null;
 const sockets: WebSocket[] = [];
 
 async function startServer() {
-  match = new Match(1234);
+  match = new Match(1234, { wildlife: false });
   const m = match;
   app = createAppServer({ staticDir: '/nonexistent', onConnection: (ws) => m.connect(ws), api: { lobby: () => m.lobby() } });
   await new Promise<void>((r) => app!.server.listen(0, '127.0.0.1', r));

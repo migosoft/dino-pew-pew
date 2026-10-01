@@ -15,6 +15,7 @@ const SIDE_DINO: DinoDef = {
   size: 'large',
   eatRate: 8,
   bounty: 50,
+  melee: { damage: 5, reach: 4, arc: 0.5, interval: 1 },
   radius: 14,
   maxSpeed: 40,
   reverseSpeed: 20,

@@ -12,6 +12,8 @@ const DINOS: Record<string, DinoDef> = {
     size: 'large',
     eatRate: 10,
     bounty: 25,
+    // Gores with its horns.
+    melee: { damage: 10, reach: 6, arc: 40 * DEG, interval: 0.8 },
     radius: 11,
     maxSpeed: 72,
     reverseSpeed: 30,
@@ -41,6 +43,8 @@ const DINOS: Record<string, DinoDef> = {
     size: 'small',
     eatRate: 12,
     bounty: 20,
+    // Slashes with its sickle claws.
+    melee: { damage: 6, reach: 5, arc: 60 * DEG, interval: 0.5 },
     radius: 7,
     maxSpeed: 118,
     reverseSpeed: 45,

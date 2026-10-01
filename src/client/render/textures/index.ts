@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { rotationStrip, silhouette } from './pixel';
-import { TEAM_PALETTES, drawHornCannon, drawRider, drawTriceratopsBody, drawTriceratopsHead } from './dinoArt';
+import { TEAM_PALETTES, WILD_PALETTE, drawHornCannon, drawRider, drawTriceratopsBody, drawTriceratopsHead } from './dinoArt';
 import {
   CANOPY_SIZES,
   ROCK_SIZES,
@@ -39,9 +39,9 @@ function addImage(scene: Phaser.Scene, key: string, canvas: HTMLCanvasElement): 
 }
 
 export function generateTextures(scene: Phaser.Scene): void {
-  // Per-team textures are keyed by palette: "t0".."t3" (see client/teams.ts).
-  TEAM_PALETTES.forEach((pal, slot) => {
-    const key = `t${slot}`;
+  // Per-team textures are keyed by palette: "t0".."t3", plus "wild" (see client/teams.ts).
+  [...TEAM_PALETTES, WILD_PALETTE].forEach((pal, slot) => {
+    const key = slot < TEAM_PALETTES.length ? `t${slot}` : 'wild';
     for (const pose of [0, 1] as const) {
       const body = drawTriceratopsBody(pal, pose);
       addStrip(scene, `triceratops_body_${key}_${pose}`, body, DIRS);

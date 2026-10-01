@@ -2,10 +2,6 @@ import type { Dino, GameState } from '../types';
 import { getDino } from '../defs/dinos';
 import { clamp } from '../math';
 import { forEachObstacleNear } from '../world';
-import { applyDamage } from './damage';
-
-const BUMP_DAMAGE = 3;
-const BUMP_MIN_SPEED = 35;
 
 /** Push a dino out of rocks, tree trunks and the map edge. */
 export function resolveObstacles(state: GameState, d: Dino): void {
@@ -30,7 +26,7 @@ export function resolveObstacles(state: GameState, d: Dino): void {
   d.y = clamp(d.y, r, world.height - r);
 }
 
-/** Separate overlapping dinos; enemies ramming each other take a little damage. */
+/** Separate overlapping dinos (damage from contact is handled by melee). */
 export function resolveDinoContacts(state: GameState): void {
   const ds = state.dinos;
   for (let i = 0; i < ds.length; i++) {
@@ -47,18 +43,15 @@ export function resolveDinoContacts(state: GameState): void {
       const dd = dx * dx + dy * dy;
       if (dd >= min * min) continue;
       const dist = Math.sqrt(dd) || 0.0001;
-      const push = (min - dist) / 2;
+      // Heavier (bigger) dinos get shoved less.
+      const share = rb / (ra + rb);
+      const overlap = min - dist;
       const nx = dx / dist;
       const ny = dy / dist;
-      a.x -= nx * push;
-      a.y -= ny * push;
-      b.x += nx * push;
-      b.y += ny * push;
-      if (a.team !== b.team && Math.max(Math.abs(a.speed), Math.abs(b.speed)) > BUMP_MIN_SPEED) {
-        if (a.bumpCooldown <= 0) applyDamage(state, a, BUMP_DAMAGE, b.id);
-        if (b.bumpCooldown <= 0) applyDamage(state, b, BUMP_DAMAGE, a.id);
-        a.bumpCooldown = b.bumpCooldown = 0.5;
-      }
+      a.x -= nx * overlap * share;
+      a.y -= ny * overlap * share;
+      b.x += nx * overlap * (1 - share);
+      b.y += ny * overlap * (1 - share);
       a.speed *= 0.85;
       b.speed *= 0.85;
     }

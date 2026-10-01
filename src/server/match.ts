@@ -48,9 +48,9 @@ export class Match {
   private lastTime = 0;
   private acc = 0;
 
-  constructor(seed: number) {
+  constructor(seed: number, { wildlife = true }: { wildlife?: boolean } = {}) {
     this.seed = seed;
-    this.state = createMatch(seed);
+    this.state = createMatch(seed, undefined, { wildlife });
     this.sentPlants = plantLevels(this.state);
   }
 

@@ -8,6 +8,8 @@ export function applyDamage(state: GameState, target: Dino, amount: number, sour
   if (!target.alive || isInOwnBase(state, target)) return;
   target.hp -= amount;
   target.hitFlash = 0.12;
+  target.lastAttacker = sourceDinoId;
+  target.sinceHit = 0;
   if (target.hp > 0) return;
   target.hp = 0;
   target.alive = false;

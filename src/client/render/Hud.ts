@@ -168,7 +168,9 @@ export class Hud {
     } else this.baseArrow.setVisible(false);
 
     const me = m.myDino;
-    const hostiles = me ? m.dinos.filter((e) => e.team !== me.team && (e.x - me.x) ** 2 + (e.y - me.y) ** 2 < ENEMY_ARROW_RANGE ** 2) : [];
+    // Threats only: enemy riders and wild carnivores (grazing herbivores are not worth an arrow).
+    const threat = (e: Dino) => e.team !== me!.team && (e.playerId !== null || getDino(e.kind).diet !== 'herbivore');
+    const hostiles = me ? m.dinos.filter((e) => threat(e) && (e.x - me.x) ** 2 + (e.y - me.y) ** 2 < ENEMY_ARROW_RANGE ** 2) : [];
     while (this.arrows.length < hostiles.length) this.arrows.push(this.scene.add.image(0, 0, 'arrow').setScrollFactor(0).setDepth(DEPTH.hud));
     this.arrows.forEach((a, i) => {
       const e = hostiles[i];

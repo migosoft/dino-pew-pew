@@ -111,8 +111,9 @@ export function onPlayerDinoDeath(state: GameState, victim: Dino, killer: Dino |
     vp.deaths++;
   }
   const kp = killer?.playerId != null && killer.team !== victim.team ? findPlayer(state, killer.playerId) : undefined;
-  if (kp) kp.kills++;
-  state.events.push({ type: 'kill', killer: kp?.id ?? null, victim: vp?.id ?? null, victimKind: victim.kind });
+  // K/D counts rider-vs-rider kills; wild kills are reported (and paid for) separately.
+  if (kp && vp) kp.kills++;
+  if (kp || vp) state.events.push({ type: 'kill', killer: kp?.id ?? null, victim: vp?.id ?? null, victimKind: victim.kind });
 }
 
 export function playerDino(state: GameState, player: PlayerState): Dino | undefined {

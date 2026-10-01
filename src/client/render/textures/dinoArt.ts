@@ -77,6 +77,21 @@ export const TEAM_PALETTES: DinoPalette[] = [
   },
 ];
 
+/** Riderless wild dinosaurs: natural, muted hides (saddle colors blend into the hide). */
+export const WILD_PALETTE: DinoPalette = {
+  dark: '#3a3a2a',
+  base: '#6a6a4a',
+  light: '#94926a',
+  belly: '#aaa47c',
+  frillDark: '#5a3a24',
+  frill: '#8a5a34',
+  frillLight: '#b88450',
+  saddle: '#6a6a4a',
+  saddleLight: '#6a6a4a',
+  tunic: '#6a6a4a',
+  tunicLight: '#94926a',
+};
+
 const OUTLINE = '#17110d';
 const BONE = '#efe4c2';
 const BONE_DARK = '#b5a57c';

@@ -146,6 +146,10 @@ export class GameScene extends Phaser.Scene {
         this.fx.hit(e.x, e.y);
         if (this.dinoViews.get(e.targetId)?.lastView.playerId === this.net.welcome!.playerId) this.cameras.main.shake(80, 0.003);
         break;
+      case 'melee':
+        this.fx.hit(e.x, e.y);
+        if (this.dinoViews.get(e.targetId)?.lastView.playerId === this.net.welcome!.playerId) this.cameras.main.shake(100, 0.004);
+        break;
       case 'impact':
         this.fx.impact(e.x, e.y);
         break;
