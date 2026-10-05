@@ -59,9 +59,9 @@ describe('round banner', () => {
   it('respawn beats the round banner', () => {
     expect(bannerFor(input({ round: round('countdown', 5), dead: true, respawn: 2.2 })).text).toBe('RESPAWN IN 3');
   });
-  it('an eliminated rider sees the fallen text, never the respawn countdown', () => {
+  it('an eliminated rider gets no centre text (the elimination panel says it), never the respawn countdown', () => {
     const t = [{ ...teams[1], eliminated: true }, teams[0]];
-    expect(bannerFor(input({ teams: t, dead: true, respawn: 1 })).text).toBe('YOUR CAMP HAS FALLEN');
+    expect(bannerFor(input({ teams: t, dead: true, respawn: 1 })).text).toBe('');
     // But when the round is over the winner banner takes over.
     expect(bannerFor(input({ teams: t, dead: true, round: round('over', 9, 'b') })).text).toBe('TEAM RED WINS');
   });

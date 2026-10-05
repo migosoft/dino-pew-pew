@@ -311,6 +311,7 @@ export class GameScene extends Phaser.Scene {
           players.find((p) => p.id === e.victim),
           e.victimKind,
           teams,
+          e.tower,
         );
         break;
     }

@@ -55,12 +55,15 @@ export interface Banner {
   winner: string | null;
 }
 
-/** Centre-screen text. Precedence: own camp fallen, then respawn countdown, then the round banner. */
+/**
+ * Centre-screen text. Precedence: own camp fallen (no text: the elimination panel announces it, and the rider
+ * never sees a respawn countdown), then respawn countdown, then the round banner.
+ */
 export function bannerFor(b: BannerInput): Banner {
   const r = b.round;
   const out = (text: string, sub = '', winner: string | null = null): Banner => ({ text, sub, winner });
   const fallen = !!b.meTeam && !!b.teams.find((t) => t.id === b.meTeam)?.eliminated;
-  if (fallen && r.phase !== 'over' && !b.spectating) return out('YOUR CAMP HAS FALLEN');
+  if (fallen && r.phase !== 'over' && !b.spectating) return out('');
   if (b.dead && !fallen) return out(`RESPAWN IN ${Math.max(1, Math.ceil(b.respawn))}`);
   switch (r.phase) {
     case 'waiting':

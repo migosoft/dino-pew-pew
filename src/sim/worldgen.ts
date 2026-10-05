@@ -106,7 +106,7 @@ function waterLayer(cols: number, rows: number, seed: number): WaterLayer {
       if (river < RIVER_WIDE && !shallow) {
         const gx = riverNoise(x + 0.5, y) - riverNoise(x - 0.5, y);
         const gy = riverNoise(x, y + 0.5) - riverNoise(x, y - 0.5);
-        const g = Math.hypot(gx, gy);
+        const g = Math.sqrt(gx * gx + gy * gy);
         if (g > 0) {
           const v = RIVER_SPEED * Math.min(1, 1.6 * (1 - river / RIVER_WIDE)) * (ford ? 0.6 : 1);
           flow[i * 2] = (-gy / g) * v;
@@ -140,7 +140,9 @@ function nearestOnRiver(r: RiverDef, x: number, y: number): { d: number; tx: num
     const vy = b.y - a.y;
     const len2 = vx * vx + vy * vy || 1;
     const t = Math.max(0, Math.min(1, ((x - a.x) * vx + (y - a.y) * vy) / len2));
-    const d = Math.hypot(x - (a.x + vx * t), y - (a.y + vy * t));
+    const dx = x - (a.x + vx * t);
+    const dy = y - (a.y + vy * t);
+    const d = Math.sqrt(dx * dx + dy * dy);
     if (d < best.d) {
       const len = Math.sqrt(len2);
       best = { d, tx: vx / len, ty: vy / len };
@@ -167,7 +169,9 @@ function recipeWater(m: MapRecipe, cols: number, rows: number, tileSize: number)
       let shallow = false;
       let lake = false;
       for (const l of m.lakes) {
-        const d = Math.hypot(x - l.x, y - l.y) + wob * l.r * 0.12;
+        const dx = x - l.x;
+        const dy = y - l.y;
+        const d = Math.sqrt(dx * dx + dy * dy) + wob * l.r * 0.12;
         if (d >= l.r) continue;
         lake = shallow = true;
         if (d < l.r - l.rim && !ford) deep = true;
@@ -195,7 +199,12 @@ function recipeWater(m: MapRecipe, cols: number, rows: number, tileSize: number)
 /** How strongly the recipe's zones of one kind apply at (x, y). */
 function zoneAt(m: MapRecipe, kind: ZoneDef['kind'], x: number, y: number): number {
   let s = 0;
-  for (const z of m.zones) if (z.kind === kind) s += z.strength * Math.max(0, 1 - Math.hypot(x - z.x, y - z.y) / z.r);
+  for (const z of m.zones) {
+    if (z.kind !== kind) continue;
+    const dx = x - z.x;
+    const dy = y - z.y;
+    s += z.strength * Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy) / z.r);
+  }
   return s;
 }
 

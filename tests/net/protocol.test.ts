@@ -113,3 +113,11 @@ describe('protocol 4', () => {
     expect(PROTOCOL_VERSION).toBe(4);
   });
 });
+
+it('a tower kill event survives the snapshot JSON round trip', () => {
+  const s = createMatch(4, SMALL, { teams: 2 });
+  const ev = { type: 'kill' as const, killer: null, victim: 3, victimKind: 'triceratops', tower: 'team0', tick: 5 };
+  const snap = buildSnapshot(s, [ev]);
+  const back = JSON.parse(JSON.stringify(snap)) as typeof snap;
+  expect(back.events).toEqual([ev]);
+});

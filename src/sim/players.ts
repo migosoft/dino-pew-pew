@@ -127,7 +127,7 @@ export function isInOwnBase(state: GameState, d: Dino): boolean {
 }
 
 /** Called when a rider's dino dies. */
-export function onPlayerDinoDeath(state: GameState, victim: Dino, killer: Dino | undefined): void {
+export function onPlayerDinoDeath(state: GameState, victim: Dino, killer: Dino | undefined, towerTeam?: string): void {
   const vp = victim.playerId !== null ? findPlayer(state, victim.playerId) : undefined;
   const kp = killer?.playerId != null && killer.team !== victim.team ? findPlayer(state, killer.playerId) : undefined;
   // Pay before resetting the victim's upgrades: upgraded riders are worth more.
@@ -140,7 +140,9 @@ export function onPlayerDinoDeath(state: GameState, victim: Dino, killer: Dino |
   }
   // K/D counts rider-vs-rider kills; wild kills are reported (and paid for) separately.
   if (kp && vp) kp.kills++;
-  if (kp || vp) state.events.push({ type: 'kill', killer: kp?.id ?? null, victim: vp?.id ?? null, victimKind: victim.kind });
+  if (kp || vp) {
+    state.events.push({ type: 'kill', killer: kp?.id ?? null, victim: vp?.id ?? null, victimKind: victim.kind, ...(!killer && towerTeam !== undefined ? { tower: towerTeam } : {}) });
+  }
 }
 
 export function playerDino(state: GameState, player: PlayerState): Dino | undefined {

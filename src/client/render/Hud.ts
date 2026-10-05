@@ -82,10 +82,11 @@ export class Hud {
     this.notice = { text, until: this.scene.time.now + 2200 };
   }
 
-  addKill(killer: PlayerInfo | undefined, victim: PlayerInfo | undefined, victimKind: string, teams: TeamInfo[]): void {
-    const who = killer?.name ?? 'THE WILD';
+  addKill(killer: PlayerInfo | undefined, victim: PlayerInfo | undefined, victimKind: string, teams: TeamInfo[], tower?: string): void {
+    const towerName = tower === undefined ? undefined : teams.find((t) => t.id === tower)?.name ?? '?';
+    const who = towerName !== undefined ? `${towerName} TOWER` : killer?.name ?? 'THE WILD';
     const whom = victim?.name ?? `A WILD ${victimKind}`;
-    this.addLine(`${who} > ${whom}`, killer ? teamColor(killer.team, teams) : 0xc8b48a);
+    this.addLine(`${who} > ${whom}`, tower !== undefined ? teamColor(tower, teams) : killer ? teamColor(killer.team, teams) : 0xc8b48a);
   }
 
   /** A line in the feed (top right): fades out after a few seconds. */
@@ -148,7 +149,7 @@ export class Hud {
             ? `HURT? STAND STILL AT ${def.size === 'large' ? 'BUSHES, FERNS OR TREES' : 'BUSHES OR FERNS'} TO EAT`
             : 'HURT? STAND STILL AT PLANTS OR A CARCASS TO EAT';
     }
-    if (m.spectating) hint = 'SPECTATING - WASD TO LOOK AROUND';
+    if (m.spectating) hint = 'SPECTATING - WASD TO LOOK AROUND - 1-4 TO JOIN';
     const showNotice = this.scene.time.now < this.notice.until;
     this.hint
       .setText(showNotice ? this.notice.text : hint)

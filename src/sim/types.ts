@@ -335,7 +335,7 @@ export type GameEvent =
   | { type: 'bite'; dinoId: number; targetId: number | null; x: number; y: number }
   | { type: 'impact'; projectileId: number; x: number; y: number }
   | { type: 'death'; dinoId: number; x: number; y: number; team: Team }
-  | { type: 'kill'; killer: number | null; victim: number | null; victimKind: string }
+  | { type: 'kill'; killer: number | null; victim: number | null; victimKind: string; /** Team of the tower that fired the killing shot, if any. */ tower?: string }
   | { type: 'spawn'; playerId: number; dinoId: number }
   | { type: 'bounty'; playerId: number; amount: number; x: number; y: number }
   | { type: 'structureHit'; structureId: number; x: number; y: number; shielded: boolean }

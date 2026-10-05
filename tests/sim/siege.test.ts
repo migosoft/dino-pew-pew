@@ -138,3 +138,21 @@ describe('melee and abilities vs structures', () => {
     expect(tower.hp).toBe(CAMP.towerHp);
   });
 });
+
+describe('tower kills', () => {
+  it('a rider killed by a tower emits a kill event naming the tower team', () => {
+    const { s, db } = siege();
+    const tower = towersOf(s, 'team0')[0];
+    applyDamage(s, db, 99999, tower.id);
+    const kill = s.events.find((e) => e.type === 'kill');
+    expect(kill).toMatchObject({ type: 'kill', killer: null, tower: 'team0' });
+  });
+
+  it('rider kills carry no tower field', () => {
+    const { s, da, db } = siege();
+    applyDamage(s, db, 99999, da.id);
+    const kill = s.events.find((e) => e.type === 'kill');
+    expect(kill).toBeDefined();
+    expect(kill).not.toHaveProperty('tower');
+  });
+});
