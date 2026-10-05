@@ -1,4 +1,5 @@
 import { checker, ellipse, hash2, line, litShade, makeCanvas, outline, px, rect, seededRandom, type PixCanvas } from './pixel';
+import { BRONTO_SCALE } from './brontosaurusArt';
 
 // Procedural food sources: edible shrubs, fern patches and carcasses.
 // Same conventions as worldArt: light from the upper-left, 1px dark outline, crisp pixels.
@@ -729,16 +730,25 @@ function drawTrexCarcass(stage: FoodStage): HTMLCanvasElement {
   return compose(out, b);
 }
 
+/**
+ * Laid out in the same design pixels as the living Brontosaurus and drawn at BRONTO_SCALE, so
+ * the carcass is as big as the animal was.
+ */
 function drawBrontosaurusCarcass(stage: FoodStage): HTMLCanvasElement {
-  const W = 104;
-  const H = 44;
+  const S = BRONTO_SCALE;
+  const W = Math.round(104 * S);
+  const H = Math.round(44 * S);
   const out = makeCanvas(W, H);
   const b = makeCanvas(W, H);
-  const cx = 52;
-  const cy = 20;
+  const cx = Math.round(52 * S);
+  const cy = Math.round(20 * S);
+  // Canvas position of a design-pixel offset from the body center.
+  const X = (v: number) => cx + Math.round(v * S);
+  const Y = (v: number) => cy + Math.round(v * S);
+  const thick = (t: number) => Math.round(t * S);
   // The neck lies curled back toward the belly side (+y), the tail sags the other way.
-  const neckOff = (x: number) => Math.round(((x - 14) / 24) ** 2 * 9);
-  const tailOff = (x: number) => -Math.round(((-14 - x) / 34) ** 2 * 6);
+  const neckOff = (x: number) => ((x - 14) / 24) ** 2 * 9;
+  const tailOff = (x: number) => -(((-14 - x) / 34) ** 2) * 6;
   // Pillar legs sticking out toward +y: [x0, y0, x1, y1].
   const legs: [number, number, number, number][] = [
     [10, 7, 12, 17],
@@ -748,77 +758,79 @@ function drawBrontosaurusCarcass(stage: FoodStage): HTMLCanvasElement {
   ];
 
   if (stage === 2) {
-    // Vertebrae from the tail tip to the skull.
-    for (let x = -48; x <= -14; x++) px(b, cx + x, cy + tailOff(x), x % 2 === 0 ? BONE : BONE_DARK);
-    line(b, cx - 14, cy, cx + 14, cy - 2, BONE, 1);
-    for (let x = -12; x <= 12; x += 3) px(b, cx + x, cy - 2, BONE_DARK);
-    for (let x = 14; x <= 36; x++) px(b, cx + x, cy + neckOff(x), x % 2 === 0 ? BONE : BONE_DARK);
+    // Vertebrae from the tail tip to the skull, one pixel per canvas column.
+    for (let x = Math.round(-48 * S); x <= Math.round(-14 * S); x++) px(b, cx + x, Y(tailOff(x / S)), x % 2 === 0 ? BONE : BONE_DARK);
+    line(b, X(-14), cy, X(14), Y(-2), BONE, 1);
+    for (let x = -12; x <= 12; x += 2) px(b, X(x), Y(-2), BONE_DARK);
+    for (let x = Math.round(14 * S); x <= Math.round(36 * S); x++) px(b, cx + x, Y(neckOff(x / S)), x % 2 === 0 ? BONE : BONE_DARK);
     // Long arched ribcage.
-    for (let r = -10; r <= 10; r += 3) {
+    for (let r = -10; r <= 10; r += 2) {
       const L = 5 + 8 * Math.sqrt(Math.max(0, 1 - (r / 13) ** 2));
-      line(b, cx + r, cy - 1, cx + r + 1.5, cy - 1 + L * 0.5, BONE, 1);
-      line(b, cx + r + 1.5, cy - 1 + L * 0.5, cx + r + 1, cy - 1 + L, BONE, 1);
-      px(b, cx + r + 1, cy - 1 + L, BONE_DARK);
+      line(b, X(r), Y(-1), X(r + 1.5), Y(-1 + L * 0.5), BONE, 1);
+      line(b, X(r + 1.5), Y(-1 + L * 0.5), X(r + 1), Y(-1 + L), BONE, 1);
+      px(b, X(r + 1), Y(-1 + L), BONE_DARK);
     }
     // Pelvis and shoulder blades.
-    ellipse(b, cx - 13, cy, 3.5, 2.5, (nx, ny, x, y) => litShade(nx, ny, x, y, BONE_DARK, BONE, BONE_HI));
-    ellipse(b, cx + 12, cy - 1, 3, 2, (nx, ny, x, y) => litShade(nx, ny, x, y, BONE_DARK, BONE, BONE_HI));
+    ellipse(b, X(-13), cy, 3.5 * S, 2.5 * S, (nx, ny, x, y) => litShade(nx, ny, x, y, BONE_DARK, BONE, BONE_HI));
+    ellipse(b, X(12), Y(-1), 3 * S, 2 * S, (nx, ny, x, y) => litShade(nx, ny, x, y, BONE_DARK, BONE, BONE_HI));
     // Thick limb bones, one dragged off.
     for (const [x0, y0, x1, y1] of [legs[0], legs[2], [-22, 10, -19, 19]]) {
-      line(b, cx + x0, cy + y0, cx + x1, cy + y1, BONE, 2);
-      rect(b, cx + x1 - 1, cy + y1 - 0.5, 3, 2, BONE_DARK);
+      line(b, X(x0), Y(y0), X(x1), Y(y1), BONE, thick(2));
+      rect(b, X(x1) - 2, Y(y1) - 1, thick(3), thick(2), BONE_DARK);
     }
     // Small skull.
-    ellipse(b, cx + 39, cy + neckOff(37), 3.5, 2.4, (nx, ny, x, y) => litShade(nx, ny, x, y, BONE_DARK, BONE, BONE_HI));
-    px(b, cx + 39, cy + neckOff(37) - 1, SOCKET);
-    px(b, cx + 41, cy + neckOff(37), SOCKET);
-    px(b, cx - 3, cy + 2, MEAT_DARK);
-    px(b, cx + 22, cy + neckOff(22) - 1, HIDE_DARK);
+    const sy = Y(neckOff(37));
+    ellipse(b, X(39), sy, 3.5 * S, 2.4 * S, (nx, ny, x, y) => litShade(nx, ny, x, y, BONE_DARK, BONE, BONE_HI));
+    px(b, X(39), sy - 2, SOCKET);
+    px(b, X(41), sy, SOCKET);
+    px(b, X(-3), Y(2), MEAT_DARK);
+    px(b, X(22), Y(neckOff(22)) - 1, HIDE_DARK);
     return compose(out, b);
   }
 
-  bloodPool(out, cx, cy + 9, stage === 0 ? 22 : 27, stage === 0 ? 8 : 10, 171 + stage);
+  bloodPool(out, cx, Y(9), (stage === 0 ? 22 : 27) * S, (stage === 0 ? 8 : 10) * S, 171 + stage);
 
   legs.forEach(([x0, y0, x1, y1], i) => {
     if (stage === 1 && i === 1) {
-      line(b, cx + x0, cy + y0, cx + x1, cy + y1 - 4, BONE, 2);
-      px(b, cx + x0, cy + y0 + 1, MEAT);
+      line(b, X(x0), Y(y0), X(x1), Y(y1 - 4), BONE, thick(2));
+      px(b, X(x0), Y(y0 + 1), MEAT);
       return;
     }
-    line(b, cx + x0, cy + y0, cx + x1, cy + y1, HIDE_DARK, 4);
-    line(b, cx + x0 - 1, cy + y0, cx + x1 - 1, cy + y1, HIDE, 1);
-    px(b, cx + x1 - 1, cy + y1 + 2, BONE_DARK);
-    px(b, cx + x1 + 1, cy + y1 + 2, BONE_DARK);
+    line(b, X(x0), Y(y0), X(x1), Y(y1), HIDE_DARK, thick(4));
+    line(b, X(x0) - 2, Y(y0), X(x1) - 2, Y(y1), HIDE, 1);
+    // Blunt toenails.
+    for (const t of [-2, 0, 2]) px(b, X(x1) + t, Y(y1 + 2) + 1, BONE_DARK);
   });
 
   const shade = (ny: number) => (ny < -0.4 ? HIDE_LIGHT : ny > 0.5 ? HIDE_DARK : HIDE);
-  taper(b, cx, cy, -48, -12, (x) => 0.7 + ((x + 48) / 36) * 5, tailOff, shade);
-  taper(b, cx, cy, 12, 36, (x) => 5 - ((x - 12) / 24) * 2.6, neckOff, shade);
+  // taper() works in canvas pixels: convert to design pixels for the shape functions.
+  taper(b, cx, cy, Math.round(-48 * S), Math.round(-12 * S), (x) => (0.7 + ((x / S + 48) / 36) * 5) * S, (x) => Math.round(tailOff(x / S) * S), shade);
+  taper(b, cx, cy, Math.round(12 * S), Math.round(36 * S), (x) => (5 - ((x / S - 12) / 24) * 2.6) * S, (x) => Math.round(neckOff(x / S) * S), shade);
   // Torso on its side: back toward -y, pale belly toward +y.
-  ellipse(b, cx - 1, cy, 17, 10, (nx, ny, x, y) => {
+  ellipse(b, X(-1), cy, 17 * S, 10 * S, (nx, ny, x, y) => {
     if (ny > 0.6 && nx * nx + ny * ny < 0.9) return checker(x, y) ? BELLY : HIDE_LIGHT;
     return litShade(nx, ny, x, y, HIDE_DARK, HIDE, HIDE_LIGHT);
   });
-  for (let x = -14; x <= 12; x += 3) px(b, cx + x, cy - 8, HIDE_DARK);
+  for (let x = -14; x <= 12; x += 2) px(b, X(x), Y(-8), HIDE_DARK);
   // Head at the end of the neck.
-  const hy = cy + neckOff(38);
-  ellipse(b, cx + 39, hy, 4.5, 3, (nx, ny, x, y) => litShade(nx, ny, x, y, HIDE_DARK, HIDE, HIDE_LIGHT));
-  px(b, cx + 39, hy - 2, '#100c08');
+  const hy = Y(neckOff(38));
+  ellipse(b, X(39), hy, 4.5 * S, 3 * S, (nx, ny, x, y) => litShade(nx, ny, x, y, HIDE_DARK, HIDE, HIDE_LIGHT));
+  px(b, X(39), hy - 3, '#100c08');
 
   if (stage === 0) {
-    px(b, cx + 2, cy + 5, MEAT);
-    px(b, cx + 3, cy + 5, MEAT_LIGHT);
-    px(b, cx - 8, cy + 3, MEAT);
-    px(b, cx + 43, hy + 1, MEAT);
+    px(b, X(2), Y(5), MEAT);
+    px(b, X(2) + 1, Y(5), MEAT_LIGHT);
+    px(b, X(-8), Y(3), MEAT);
+    px(b, X(43), hy + 1, MEAT);
   } else {
-    wound(b, cx - 2, cy + 1, 11, 6.5, 97);
-    for (let r = -8; r <= 8; r += 3) {
+    wound(b, X(-2), Y(1), 11 * S, 6.5 * S, 97);
+    for (let r = -8; r <= 8; r += 2) {
       const h = 6.5 * Math.sqrt(1 - (r / 11.5) ** 2) * 0.8;
-      line(b, cx - 2 + r, cy + 1 - h, cx - 2 + r + 1, cy + 1 + h, BONE, 1);
-      px(b, cx - 2 + r + 1, cy + 1 + h, BONE_DARK);
+      line(b, X(r - 2), Y(1 - h), X(r - 1), Y(1 + h), BONE, 1);
+      px(b, X(r - 1), Y(1 + h), BONE_DARK);
     }
-    px(b, cx + 20, cy + neckOff(20), MEAT);
-    px(b, cx + 21, cy + neckOff(21), MEAT_DARK);
+    px(b, X(20), Y(neckOff(20)), MEAT);
+    px(b, X(21), Y(neckOff(21)), MEAT_DARK);
   }
   return compose(out, b);
 }
