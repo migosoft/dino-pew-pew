@@ -2,6 +2,7 @@ import type { Dino, DinoDef, InputCommand, World } from '../types';
 import { getDino } from '../defs/dinos';
 import { approach, clamp } from '../math';
 import { flowAt, isAirborne, isDeepWater } from '../world';
+import { resolveObstacles, type ObstacleEnv } from './collision';
 
 /** Fraction of top speed kept in deep water by species that don't set `wadeSpeed`. */
 export const DEFAULT_WADE_SPEED = 0.6;
@@ -47,4 +48,14 @@ export function moveDino(d: Dino, cmd: InputCommand, dt: number, speedCap = 1): 
   d.x += Math.cos(d.heading) * step;
   d.y += Math.sin(d.heading) * step;
   d.stride += Math.abs(step);
+}
+
+/**
+ * A dino's own movement for one tick (not during a leap or dash): river drift, steering, then
+ * obstacles. The client predicts its rider with this same function, so keep the two in step.
+ */
+export function driveDino(env: ObstacleEnv, d: Dino, cmd: InputCommand, dt: number): void {
+  applyCurrent(env.world, d, dt);
+  moveDino(d, cmd, dt, terrainSpeedFactor(env.world, d));
+  resolveObstacles(env, d);
 }

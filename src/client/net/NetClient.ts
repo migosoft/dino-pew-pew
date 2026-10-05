@@ -10,6 +10,11 @@ export interface JoinRequest {
   setup?: RoundSettings;
 }
 
+export interface NetOptions {
+  /** Debug: add this much round-trip delay (half each way) to reproduce a remote server locally. */
+  lagMs?: number;
+}
+
 export type NetStatus = 'connecting' | 'joining' | 'playing' | 'closed';
 
 export function gameSocketUrl(): string {
@@ -31,14 +36,30 @@ export class NetClient {
   private carcassesGone: number[] = [];
   /** Server notices (e.g. refused purchases) not yet shown. */
   notices: string[] = [];
+  /**
+   * Smoothed time from sending an input to the first snapshot acknowledging it: the round trip
+   * plus the wait for the server's tick and snapshot (up to ~65 ms of that is not network).
+   */
+  rttMs = 0;
+  /** Smoothed deviation of snapshot arrival intervals from the server's 50 ms. */
+  jitterMs = 0;
+  private sentAt = new Float64Array(256);
+  private lastAck = 0;
+  private lastSnapAt = 0;
+  private readonly lagMs: number;
 
-  constructor(url: string, join: JoinRequest) {
+  constructor(url: string, join: JoinRequest, opts: NetOptions = {}) {
+    this.lagMs = Math.max(0, opts.lagMs ?? 0);
     this.ws = new WebSocket(url);
     this.ws.onopen = () => {
       this.status = 'joining';
-      this.ws.send(JSON.stringify({ t: 'join', ...join }));
+      this.send(JSON.stringify({ t: 'join', ...join }));
     };
-    this.ws.onmessage = (ev) => this.receive(JSON.parse(ev.data as string) as ServerMsg);
+    this.ws.onmessage = (ev) => {
+      const msg = JSON.parse(ev.data as string) as ServerMsg;
+      if (this.lagMs) setTimeout(() => this.receive(msg), this.lagMs / 2);
+      else this.receive(msg);
+    };
     this.ws.onclose = () => {
       this.status = 'closed';
     };
@@ -56,12 +77,21 @@ export class NetClient {
         this.status = 'playing';
         this.onWelcome?.(msg);
         break;
-      case 'snap':
-        this.mirror.push(msg, performance.now());
+      case 'snap': {
+        const now = performance.now();
+        if (msg.ack > this.lastAck) {
+          this.lastAck = msg.ack;
+          const sample = now - this.sentAt[msg.ack & 255];
+          this.rttMs = this.rttMs ? this.rttMs + (sample - this.rttMs) * 0.1 : sample;
+        }
+        if (this.lastSnapAt) this.jitterMs += (Math.abs(now - this.lastSnapAt - 50) - this.jitterMs) * 0.1;
+        this.lastSnapAt = now;
+        this.mirror.push(msg, now);
         if (msg.plants.length) this.plantUpdates.push(...msg.plants);
         if (msg.carcasses.length) this.carcassUpdates.push(...msg.carcasses);
         if (msg.gone.length) this.carcassesGone.push(...msg.gone);
         break;
+      }
       case 'notice':
         this.notices.push(msg.message);
         break;
@@ -87,17 +117,26 @@ export class NetClient {
     return u;
   }
 
-  sendInput(cmd: InputCommand): void {
-    if (this.status !== 'playing' || this.ws.readyState !== WebSocket.OPEN) return;
-    this.ws.send(encodeInput(++this.seq, cmd));
+  /** Send one input; returns its seq, or 0 if it wasn't sent. */
+  sendInput(cmd: InputCommand): number {
+    if (this.status !== 'playing' || this.ws.readyState !== WebSocket.OPEN) return 0;
+    this.seq++;
+    this.sentAt[this.seq & 255] = performance.now();
+    this.send(encodeInput(this.seq, cmd));
+    return this.seq;
   }
 
   buy(stat: UpgradeStat): void {
-    if (this.status === 'playing') this.ws.send(JSON.stringify({ t: 'buy', stat }));
+    if (this.status === 'playing') this.send(JSON.stringify({ t: 'buy', stat }));
   }
 
   switchTeam(team: string, kind: string): void {
-    if (this.status === 'playing') this.ws.send(JSON.stringify({ t: 'switch', team, kind }));
+    if (this.status === 'playing') this.send(JSON.stringify({ t: 'switch', team, kind }));
+  }
+
+  private send(data: string): void {
+    if (!this.lagMs) return this.ws.send(data);
+    setTimeout(() => this.ws.readyState === WebSocket.OPEN && this.ws.send(data), this.lagMs / 2);
   }
 
   close(): void {

@@ -5,6 +5,7 @@ import { generateWorld } from '../../sim/worldgen';
 import { worldOptionsFor } from '../../sim/maps';
 import type { PlayerInfo, StructureInfo, TeamInfo, TimedEvent, WelcomeMsg } from '../../net/protocol';
 import { NetClient, gameSocketUrl, type JoinRequest } from '../net/NetClient';
+import { Predictor } from '../net/Predictor';
 import { PlayerInput } from '../input/playerInput';
 import { WorldView } from '../render/WorldView';
 import { WaterView, wadingOf } from '../render/WaterView';
@@ -29,7 +30,10 @@ import { UPGRADE_STATS } from '../../sim/upgrades';
 const CAMERA_LOOKAHEAD = 0.18;
 const CAMERA_LOOKAHEAD_MAX = 40;
 const SPECTATE_SPEED = 400;
-const INPUT_INTERVAL_MS = 1000 / 60;
+/** Camera easing time constants (ms): snappy behind your own (predicted) dino, softer elsewhere. */
+const CAMERA_TAU_RIDING = 50;
+const CAMERA_TAU_FREE = 130;
+const DEBUG = import.meta.env.DEV || new URLSearchParams(location.search).has('debug');
 
 /** The live match as seen by this client: server snapshots, interpolated and drawn. */
 export class GameScene extends Phaser.Scene {
@@ -56,7 +60,11 @@ export class GameScene extends Phaser.Scene {
   private status!: Phaser.GameObjects.BitmapText;
   private camX = 0;
   private camY = 0;
-  private lastInput = 0;
+  private predictor!: Predictor;
+  /** Tick of the newest snapshot the predictor has reconciled with. */
+  private reconciledTick = -1;
+  private lastFrameAt = 0;
+  private debugText: Phaser.GameObjects.BitmapText | null = null;
   private leaving = false;
   private restarting = false;
   /** True once followCamera has scrolled the camera to a target (until then it sits at the origin). */
@@ -76,6 +84,9 @@ export class GameScene extends Phaser.Scene {
     this.camX = 0;
     this.camY = 0;
     this.camPlaced = false;
+    this.reconciledTick = -1;
+    this.lastFrameAt = 0;
+    this.debugText = null;
   }
 
   create(data: { join?: JoinRequest; net?: NetClient }): void {
@@ -83,7 +94,9 @@ export class GameScene extends Phaser.Scene {
     this.input.setDefaultCursor('none');
     const cam = this.cameras.main;
     this.status = pixelText(this, Math.round(cam.width / 2), Math.round(cam.height / 2), 'JOINING...').setOrigin(0.5);
-    this.net = data.net ?? new NetClient(gameSocketUrl(), data.join!);
+    // ?lag=N (debug builds or ?debug) adds N ms of round trip, to try a remote server's latency locally.
+    const lagMs = DEBUG ? Number(new URLSearchParams(location.search).get('lag')) || 0 : 0;
+    this.net = data.net ?? new NetClient(gameSocketUrl(), data.join!, { lagMs });
     this.net.onWelcome = () => {
       if (!this.world) return this.startWorld(this.net.welcome!);
       // New round: rebuild the whole scene on the same connection.
@@ -98,7 +111,7 @@ export class GameScene extends Phaser.Scene {
       this.waterView?.destroy();
     });
     // Debug handle for the browser console / test drivers (dev builds, or any build with ?debug).
-    if (import.meta.env.DEV || new URLSearchParams(location.search).has('debug')) {
+    if (DEBUG) {
       (window as unknown as { dinoriders: unknown }).dinoriders = { scene: this, net: this.net };
     }
   }
@@ -115,6 +128,7 @@ export class GameScene extends Phaser.Scene {
     this.arc = new ArcIndicator(this);
     this.hud = new Hud(this);
     this.playerInput = new PlayerInput(this);
+    this.predictor = new Predictor(this.world);
     this.reticle = this.add.image(0, 0, 'reticle').setDepth(DEPTH.hud + 1);
     this.shop = new ShopPanel(this, (stat) => this.net.buy(stat));
     this.eliminated = new EliminatedPanel(this, (team, kind) => this.net.switchTeam(team, kind));
@@ -133,6 +147,7 @@ export class GameScene extends Phaser.Scene {
     const cam = this.cameras.main;
     cam.setBounds(0, 0, this.world.width, this.world.height);
     cam.setRoundPixels(true);
+    if (DEBUG) this.debugText = pixelText(this, 6, cam.height - 10, '', 0x9fe0ff);
   }
 
   update(time: number, delta: number): void {
@@ -141,22 +156,34 @@ export class GameScene extends Phaser.Scene {
     const mirror = this.net.mirror;
     const me = this.net.welcome!.playerId;
 
-    if (time - this.lastInput >= INPUT_INTERVAL_MS - 1) {
-      this.lastInput = time;
-      this.net.sendInput(this.playerInput.command());
+    // Prediction: catch up with the newest snapshot, then step (and send) this frame's inputs.
+    const now = performance.now();
+    const frameDt = this.lastFrameAt ? Math.min(0.25, (now - this.lastFrameAt) / 1000) : 0;
+    this.lastFrameAt = now;
+    const latest = mirror.latest()!;
+    if (latest.tick !== this.reconciledTick) {
+      this.reconciledTick = latest.tick;
+      this.predictor.setStructures(mirror.structuresAt(latest.tick));
+      this.predictor.reconcile(mirror.latestDinoOf(me), latest.ack);
     }
+    this.predictor.advance(frameDt, () => this.playerInput.command(), (cmd) => this.net.sendInput(cmd));
 
-    const rt = mirror.renderTick(performance.now());
+    const rt = mirror.renderTick(now);
     const players = mirror.players();
     const teams = mirror.teams();
     const structures = mirror.structuresAt(rt);
-    for (const e of mirror.takeEvents(rt)) this.handleEvent(e, players, teams, structures);
+    const dinos = mirror.dinosAt(rt);
+    const myDino = dinos.find((d) => d.playerId === me);
+    const serverX = myDino?.x ?? 0;
+    const serverY = myDino?.y ?? 0;
+    this.predictor.apply(myDino, frameDt);
+    const shift = myDino ? { dinoId: myDino.id, dx: myDino.x - serverX, dy: myDino.y - serverY } : undefined;
+    for (const e of mirror.takeEvents(rt, shift)) this.handleEvent(e, players, teams, structures);
 
     this.foodView.setPlants(this.net.takePlantUpdates());
     const carcasses = this.net.takeCarcassUpdates();
     if (carcasses.changed.length) this.foodView.upsertCarcasses(carcasses.changed);
     if (carcasses.gone.length) this.foodView.removeCarcasses(carcasses.gone);
-    const dinos = mirror.dinosAt(rt);
     if (time - this.lastFeedFx > 250) {
       this.lastFeedFx = time;
       for (const d of dinos) if (d.eating) this.fx.feed(d.x + Math.cos(d.heading) * geometry(d).mouth, d.y + Math.sin(d.heading) * geometry(d).mouth, getDino(d.kind).diet === 'carnivore');
@@ -177,7 +204,6 @@ export class GameScene extends Phaser.Scene {
     // Spent bolts only plink: a small ring and a couple of droplets.
     for (const p of mirror.takeSpent()) this.waterView.splash(p.x, p.y, 3, 2);
     const meInfo = players.find((p) => p.id === me);
-    const myDino = dinos.find((d) => d.playerId === me);
     this.projectileView.update(mirror.projectilesAt(rt), meInfo?.team);
     this.worldView.updateBases(teams);
     this.structures.update(structures, teams, time, this.cameras.main.worldView);
@@ -190,10 +216,10 @@ export class GameScene extends Phaser.Scene {
       const cmd = this.playerInput.command();
       this.spectate.x = clamp(this.spectate.x + cmd.turn * SPECTATE_SPEED * (delta / 1000), 0, this.world.width);
       this.spectate.y = clamp(this.spectate.y - cmd.throttle * SPECTATE_SPEED * (delta / 1000), 0, this.world.height);
-      this.followCamera(this.spectate);
+      this.followCamera(this.spectate, delta, CAMERA_TAU_FREE);
     } else {
       this.spectate = null;
-      this.followCamera(myDino ?? myBase);
+      this.followCamera(myDino ?? myBase, delta, myDino ? CAMERA_TAU_RIDING : CAMERA_TAU_FREE);
     }
     // Cull by where the camera is now scrolled to: cameras.main.worldView only catches up in the camera's own render step, a frame late.
     if (this.camPlaced) {
@@ -215,6 +241,10 @@ export class GameScene extends Phaser.Scene {
     this.shop.update(meInfo);
     for (const n of this.net.notices.splice(0)) this.hud.showNotice(n);
     this.hud.update({ me: meInfo, myDino, dinos, players, teams, structures, round: mirror.round(), spectating: this.eliminated.spectating });
+    if (this.debugText) {
+      const n = this.net;
+      this.debugText.setText(`RTT ${Math.round(n.rttMs)} JIT ${Math.round(n.jitterMs)} FPS ${Math.round(this.game.loop.actualFps)} ERR ${Math.round(this.predictor.lastError)} ${this.predictor.predicting ? 'PRED' : 'SERVER'}`);
+    }
   }
 
   private syncDinoViews(dinos: Dino[], teams: TeamInfo[]): void {
@@ -328,7 +358,8 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({ targets: t, y: t.y - 16, alpha: 0, delay: 500, duration: 900, onComplete: () => t.destroy() });
   }
 
-  private followCamera(target: { x: number; y: number } | undefined): void {
+  /** Ease the camera towards `target` (plus a look-ahead to the aim), with time constant `tau` ms. */
+  private followCamera(target: { x: number; y: number } | undefined, delta: number, tau: number): void {
     if (!target) return;
     const cam = this.cameras.main;
     const aim = this.playerInput.aimWorld();
@@ -340,8 +371,9 @@ export class GameScene extends Phaser.Scene {
       this.camX = tx;
       this.camY = ty;
     }
-    this.camX += (tx - this.camX) * 0.12;
-    this.camY += (ty - this.camY) * 0.12;
+    const k = 1 - Math.exp(-delta / tau);
+    this.camX += (tx - this.camX) * k;
+    this.camY += (ty - this.camY) * k;
     cam.setScroll(Math.round(this.camX), Math.round(this.camY));
     this.camPlaced = true;
   }
