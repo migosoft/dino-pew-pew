@@ -2,7 +2,7 @@ import type { GameState, InputCommand } from './types';
 import { getDino } from './defs/dinos';
 import { makeRng } from './rng';
 import { generateWorld, type WorldGenOptions } from './worldgen';
-import { updatePlayers } from './players';
+import { createTeam, updatePlayers } from './players';
 import { applyCurrent, moveDino, terrainSpeedFactor } from './systems/movement';
 import { resolveDinoContacts, resolveObstacles } from './systems/collision';
 import { selectFiringMounts, selectSideMounts, updateAim } from './systems/aiming';
@@ -19,6 +19,10 @@ import { buildDinoGrid } from './spatial';
 export interface MatchOptions {
   /** Spawn and maintain wild dinosaurs (default false; the game server turns it on). */
   wildlife?: boolean;
+  /** Create this many teams (with camps) right away. Default 0: tests add teams with createTeam. */
+  teams?: number;
+  /** Camps, towers and rounds (default true). Old unit tests about other systems turn them off. */
+  camps?: boolean;
 }
 
 /** A fresh, empty persistent match. Teams and players are added as people join. */
@@ -31,13 +35,17 @@ export function createMatch(seed: number, worldOpts?: WorldGenOptions, opts: Mat
     food: world.food.map((f) => ({ ...f })),
     dinos: [],
     projectiles: [],
+    structures: [],
     events: [],
     nextId: 1,
     teams: [],
     players: [],
     wildlife: opts.wildlife ?? false,
     wildSpawnTimer: { t: 0 },
+    camps: opts.camps ?? true,
+    round: { phase: 'waiting', timer: 0, winner: null },
   };
+  for (let i = 0; i < (opts.teams ?? 0); i++) createTeam(state);
   if (state.wildlife) populateWild(state);
   return state;
 }

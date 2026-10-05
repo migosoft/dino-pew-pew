@@ -338,6 +338,39 @@ export type GameEvent =
   | { type: 'spawn'; playerId: number; dinoId: number }
   | { type: 'bounty'; playerId: number; amount: number; x: number; y: number };
 
+export type StructureKind = 'camp' | 'tower';
+
+/** A team's camp building or one of its defense towers. Solid while standing (hp > 0). */
+export interface Structure {
+  id: number;
+  team: Team;
+  kind: StructureKind;
+  x: number;
+  y: number;
+  radius: number;
+  hp: number;
+  maxHp: number;
+  /** Turret direction, radians (towers). */
+  angle: number;
+  /** Seconds until the tower gun can fire again. */
+  cooldown: number;
+  /** Seconds until a destroyed tower stands again (0 while standing or for good). */
+  rebuildIn: number;
+  hitFlash: number;
+  /** Dino the tower is aiming at. */
+  target: number | null;
+}
+
+export type RoundPhase = 'waiting' | 'countdown' | 'playing' | 'over';
+
+export interface RoundState {
+  phase: RoundPhase;
+  /** Seconds left in countdown / over. */
+  timer: number;
+  /** Winning team id once the round is over (null for a draw). */
+  winner: Team | null;
+}
+
 export interface TeamState {
   id: Team;
   /** Index into the base slots and team color palettes (0..MAX_TEAMS-1). */
@@ -345,6 +378,7 @@ export interface TeamState {
   base: Vec2;
   /** Seconds the team has had no players; it dissolves after a timeout. */
   emptyFor: number;
+  eliminated: boolean;
 }
 
 export interface PlayerState {
@@ -369,6 +403,7 @@ export interface GameState {
   world: World;
   dinos: Dino[];
   projectiles: Projectile[];
+  structures: Structure[];
   events: GameEvent[];
   nextId: number;
   teams: TeamState[];
@@ -377,6 +412,9 @@ export interface GameState {
   /** Wild dinosaurs roam and respawn (off in most unit tests). */
   wildlife: boolean;
   wildSpawnTimer: { t: number };
+  /** Camps, towers and rounds are active. */
+  camps: boolean;
+  round: RoundState;
 }
 
 export const TICK_RATE = 60;

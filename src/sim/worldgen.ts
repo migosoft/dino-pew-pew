@@ -1,4 +1,5 @@
 import { Tile, type FoodKind, type FoodSource, type Obstacle, type Vec2, type World } from './types';
+import { CAMP } from './camp';
 import { FOOD, makeCarcass } from './systems/feeding';
 import { fbm } from './noise';
 import { makeRng, rand, randInt, randRange } from './rng';
@@ -20,7 +21,7 @@ export interface WorldGenOptions {
 /** Default map: 512 x 512 tiles of 16 px = 8192 px square (the client draws the ground in chunks). */
 export const DEFAULT_TILES = 512;
 /** Obstacle-free radius around each base camp. */
-export const BASE_CLEAR = 140;
+export const BASE_CLEAR = CAMP.radius + 40;
 /** Water never comes closer than this to a base camp center. */
 export const BASE_DRY = BASE_CLEAR + 60;
 /** Minimum free gap between any two obstacles: wide enough for the biggest dino to pass. */

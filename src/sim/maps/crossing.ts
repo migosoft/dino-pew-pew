@@ -1,16 +1,9 @@
 import type { Vec2 } from '../types';
+import { towerRing } from '../camp';
 import type { MapRecipe } from './types';
 
 const C = 4096;
 const mirror = (p: Vec2): Vec2 => ({ x: 2 * C - p.x, y: 2 * C - p.y });
-
-/** Five towers on a ring of 170 px around a camp, the first one facing `facingDeg`. */
-function towerRing(base: Vec2, facingDeg: number): Vec2[] {
-  return Array.from({ length: 5 }, (_, k) => {
-    const a = ((facingDeg + k * 72) * Math.PI) / 180;
-    return { x: Math.round(base.x + Math.cos(a) * 170), y: Math.round(base.y + Math.sin(a) * 170) };
-  });
-}
 
 const CAMP_A = { x: 1024, y: 1024 };
 const CAMP_B = mirror(CAMP_A);
@@ -41,7 +34,7 @@ export const CROSSING: MapRecipe = {
   symmetry: 'point',
   bases: [CAMP_A, CAMP_B],
   // Towers face the map centre.
-  towers: [towerRing(CAMP_A, 45), towerRing(CAMP_B, 225)],
+  towers: [towerRing(CAMP_A, Math.PI / 4), towerRing(CAMP_B, (5 * Math.PI) / 4)],
   lakes: [{ x: C, y: C, r: 700, rim: 110 }],
   rivers: [
     { points: RIVER_NE, deep: 60, wide: 120 },

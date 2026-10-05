@@ -3,7 +3,6 @@ import type { GameState, InputCommand } from '../../src/sim/types';
 import { createMatch, step } from '../../src/sim/sim';
 import {
   BASE_RADIUS,
-  MAX_TEAMS,
   RESPAWN_TIME,
   TEAM_EMPTY_TIMEOUT,
   addPlayer,
@@ -43,8 +42,8 @@ function toMidfield(s: GameState, id: number, dx = 0) {
 describe('teams', () => {
   it('assigns separate base camps, up to the team limit', () => {
     const s = createMatch(1, SMALL);
-    const teams = Array.from({ length: MAX_TEAMS }, () => createTeam(s)!);
-    expect(new Set(teams.map((t) => t.slot)).size).toBe(MAX_TEAMS);
+    const teams = Array.from({ length: s.world.bases.length }, () => createTeam(s)!);
+    expect(new Set(teams.map((t) => t.slot)).size).toBe(s.world.bases.length);
     expect(createTeam(s)).toBeNull();
   });
 

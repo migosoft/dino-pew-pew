@@ -1,4 +1,5 @@
 import type { Dino, GameState, PlayerState, TeamState } from './types';
+import { CAMP, placeCamp } from './camp';
 import { getDino } from './defs/dinos';
 import { angleTo } from './math';
 import { rand, randRange } from './rng';
@@ -7,8 +8,8 @@ import { applyUpgrades, noUpgrades, payBounty } from './upgrades';
 
 export const MAX_TEAMS = 4;
 export const MAX_PLAYERS = 23;
-/** Radius of a team's base camp safe zone. */
-export const BASE_RADIUS = 90;
+/** Radius of a team's camp area. */
+export const BASE_RADIUS = CAMP.radius;
 export const RESPAWN_TIME = 4;
 /** A team with no players dissolves after this many seconds, freeing its base. */
 export const TEAM_EMPTY_TIMEOUT = 30;
@@ -17,10 +18,11 @@ export const TEAM_NAMES = ['GREEN', 'RED', 'GOLD', 'BLUE'];
 /** Found a new team in the first free base slot, or null if all slots are taken. */
 export function createTeam(state: GameState): TeamState | null {
   if (state.teams.length >= MAX_TEAMS) return null;
-  for (let slot = 0; slot < MAX_TEAMS; slot++) {
+  for (let slot = 0; slot < state.world.bases.length; slot++) {
     if (state.teams.some((t) => t.slot === slot)) continue;
-    const team: TeamState = { id: `team${slot}`, slot, base: { ...state.world.bases[slot] }, emptyFor: 0 };
+    const team: TeamState = { id: `team${slot}`, slot, base: { ...state.world.bases[slot] }, emptyFor: 0, eliminated: false };
     state.teams.push(team);
+    if (state.camps) placeCamp(state, team);
     return team;
   }
   return null;
