@@ -19,7 +19,8 @@ export const SPAWN_AWAY_FROM_RIDERS = 340;
 
 /** Herbivore species, listed by how often they appear: about 1 in 4 is a Brontosaurus. */
 const HERBIVORES = ['triceratops', 'triceratops', 'triceratops', 'brontosaurus'];
-const CARNIVORES = ['velociraptor'];
+/** Carnivore species, likewise: about 1 in 4 is a T-Rex. */
+const CARNIVORES = ['velociraptor', 'velociraptor', 'velociraptor', 'trex'];
 
 /** Spawn one wild dino of the needed diet somewhere unseen. Returns false if no spot was found. */
 export function spawnWild(state: GameState): boolean {

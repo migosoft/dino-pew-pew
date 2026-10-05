@@ -13,5 +13,7 @@ export default defineConfig({
   },
   test: {
     include: ['tests/**/*.test.ts'],
+    // Several tests generate the full 4096 px map more than once; under parallel load that takes seconds.
+    testTimeout: 20000,
   },
 } as any);

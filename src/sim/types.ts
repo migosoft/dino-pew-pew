@@ -15,7 +15,7 @@ export interface InputCommand {
   /** Point in world space the rider wants to shoot at. */
   aimWorld: Vec2;
   fire: boolean;
-  /** Trigger the species ability (raptor leap, triceratops dash). */
+  /** Trigger the species ability (raptor leap, triceratops dash, brontosaurus whip, t-rex bite). */
   ability?: boolean;
 }
 
@@ -69,11 +69,12 @@ export interface MeleeDef {
 }
 
 /**
- * Active ability on a cooldown: a leap toward the aim point, a straight dash, or a tail whip
- * that sweeps the area behind the dino. All of them deal damage on impact.
+ * Active ability on a cooldown: a leap toward the aim point, a straight dash, a tail whip
+ * that sweeps the area behind the dino, or a lunging bite at one dino in front. All of them
+ * deal damage on impact.
  */
 export interface AbilityDef {
-  kind: 'leap' | 'dash' | 'whip';
+  kind: 'leap' | 'dash' | 'whip' | 'bite';
   /** Seconds between uses. */
   cooldown: number;
   /** Seconds the ability controls movement. */
@@ -82,13 +83,13 @@ export interface AbilityDef {
   /** Leap: min and max distance to the landing point. */
   minRange?: number;
   maxRange?: number;
-  /** Dash: pixels per second. */
+  /** Dash and bite lunge: pixels per second. */
   speed?: number;
   /** Extra distance beyond touching (sum of radii) at which the impact hits. */
   hitReach: number;
-  /** Whip: half-angle around the tail direction that the swing covers, radians. */
+  /** Whip: half-angle around the tail direction that the swing covers. Bite: half-angle in front of the jaws. Radians. */
   arc?: number;
-  /** Whip: how far each struck dino is shoved. */
+  /** Whip and bite: how far each struck dino is shoved. */
   knockback?: number;
 }
 
@@ -327,6 +328,8 @@ export type GameEvent =
   | { type: 'ability'; dinoId: number; kind: AbilityDef['kind']; x: number; y: number }
   | { type: 'slam'; dinoId: number; x: number; y: number }
   | { type: 'whip'; dinoId: number; x: number; y: number }
+  /** Jaws snapping shut at (x, y); targetId is the dino bitten, or null on a miss. */
+  | { type: 'bite'; dinoId: number; targetId: number | null; x: number; y: number }
   | { type: 'impact'; projectileId: number; x: number; y: number }
   | { type: 'death'; dinoId: number; x: number; y: number; team: Team }
   | { type: 'kill'; killer: number | null; victim: number | null; victimKind: string }

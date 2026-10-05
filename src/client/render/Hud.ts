@@ -27,7 +27,7 @@ const FEED_SECONDS = 6;
 
 /** Screen-space HUD plus world-space name tags and health bars. */
 /** HUD names of the abilities (5x7 font: uppercase). */
-const ABILITY_LABEL = { leap: 'JUMP', dash: 'DASH', whip: 'WHIP' } as const;
+const ABILITY_LABEL = { leap: 'JUMP', dash: 'DASH', whip: 'WHIP', bite: 'BITE' } as const;
 
 export class Hud {
   private g: Phaser.GameObjects.Graphics;

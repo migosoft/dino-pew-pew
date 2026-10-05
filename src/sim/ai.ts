@@ -24,6 +24,7 @@ const ABILITY_CHANCE = 0.015;
 /** Dash only at a target roughly straight ahead; a leap can be aimed a bit more freely. */
 const DASH_ABILITY_ARC = 20 * DEG;
 const LEAP_ABILITY_ARC = 60 * DEG;
+const BITE_ABILITY_ARC = 25 * DEG;
 
 export function makeWildAi(state: GameState): WildAi {
   return {
@@ -144,12 +145,17 @@ function wantsWhip(state: GameState, d: Dino, def: DinoDef): boolean {
   return behind && rand(state.rng) < ABILITY_CHANCE * 4;
 }
 
-/** Sometimes pounce (leap) or charge (dash) at a chased target that is in range and ahead. */
+/** Sometimes pounce (leap), charge (dash) or lunge and bite at a chased target that is in range and ahead. */
 function wantsAbility(state: GameState, d: Dino, def: DinoDef, target: Dino): boolean {
   const ab = def.ability;
   if (!ab || ab.kind === 'whip' || d.abilityCooldown > 0 || d.abilityT >= 0) return false;
   const dist = Math.hypot(target.x - d.x, target.y - d.y);
-  const [lo, hi, arc] = ab.kind === 'leap' ? [40, ab.maxRange ?? 0, LEAP_ABILITY_ARC] : [30, 130, DASH_ABILITY_ARC];
+  const [lo, hi, arc] =
+    ab.kind === 'leap'
+      ? [40, ab.maxRange ?? 0, LEAP_ABILITY_ARC]
+      : ab.kind === 'bite'
+        ? [0, (def.head?.offset.x ?? def.radius) + getDino(target.kind).radius + ab.hitReach + 8, BITE_ABILITY_ARC]
+        : [30, 130, DASH_ABILITY_ARC];
   if (dist < lo || dist > hi || Math.abs(angleDiff(angleTo(d, target), d.heading)) > arc) return false;
   return rand(state.rng) < ABILITY_CHANCE;
 }

@@ -45,6 +45,28 @@ const WEAPONS: Record<string, WeaponDef> = {
     projectileKind: 'bolt',
     projectileRadius: 2,
   },
+  // The T-Rex's head guns: the two ends of the barrel across its head armor. Quick and accurate.
+  rexHeadGun: {
+    id: 'rexHeadGun',
+    fireInterval: 0.22,
+    projectileSpeed: 320,
+    damage: 4,
+    spread: 0.02,
+    range: 260,
+    projectileKind: 'bolt',
+    projectileRadius: 1.5,
+  },
+  // The T-Rex's shoulder cannons, one in each armored shoulder frame.
+  rexShoulderCannon: {
+    id: 'rexShoulderCannon',
+    fireInterval: 0.45,
+    projectileSpeed: 260,
+    damage: 8,
+    spread: 0.04,
+    range: 250,
+    projectileKind: 'bolt',
+    projectileRadius: 2.5,
+  },
 };
 
 export function getWeapon(id: string): WeaponDef {

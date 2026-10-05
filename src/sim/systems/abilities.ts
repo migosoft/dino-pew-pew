@@ -9,8 +9,8 @@ import { applyDamage } from './damage';
 import { isHostile } from './melee';
 
 // Species abilities on right mouse: the raptor leaps toward the aim point and slams down,
-// the triceratops dashes straight ahead and rams whoever is in the way, and the brontosaurus
-// sweeps its tail through everything behind it.
+// the triceratops dashes straight ahead and rams whoever is in the way, the brontosaurus
+// sweeps its tail through everything behind it, and the t-rex lunges and bites.
 
 /** Half-angle in front of a dashing dino within which it rams others. */
 const DASH_ARC = 70 * DEG;
@@ -53,6 +53,25 @@ export function updateAbility(state: GameState, d: Dino, dt: number): boolean {
     if (before < strike && d.abilityT >= strike - 1e-6) whip(state, d, def.radius, ab);
     if (done) d.abilityT = -1;
     return false;
+  }
+  if (ab.kind === 'bite') {
+    // Lunge for the first half, then the jaws snap shut and the dino walks on.
+    const strike = ab.duration / 2;
+    const lunging = before < strike;
+    if (lunging) {
+      const speed = (ab.speed ?? def.maxSpeed) * terrainSpeedFactor(state.world, d, def);
+      d.speed = speed;
+      d.x += Math.cos(d.heading) * speed * dt;
+      d.y += Math.sin(d.heading) * speed * dt;
+      d.stride += speed * dt;
+      resolveObstacles(state, d);
+    }
+    if (lunging && d.abilityT >= strike - 1e-6) {
+      bite(state, d, ab);
+      d.speed = Math.min(d.speed, def.maxSpeed);
+    }
+    if (done) d.abilityT = -1;
+    return lunging;
   }
   if (ab.kind === 'leap') {
     const t = Math.min(1, d.abilityT / ab.duration);
@@ -133,4 +152,30 @@ function whip(state: GameState, d: Dino, r: number, ab: AbilityDef): void {
     b.y += Math.sin(dir) * shove;
     resolveObstacles(state, b);
   }
+}
+
+/** Bite: the jaws close on the one nearest hostile in front of the head, except one safe in its camp. */
+function bite(state: GameState, d: Dino, ab: AbilityDef): void {
+  const def = getDino(d.kind);
+  const jaw = def.head?.offset.x ?? def.radius;
+  let best: Dino | undefined;
+  let bestDist = Infinity;
+  for (const b of state.dinos) {
+    if (b === d || !b.alive || isAirborne(b) || !isHostile(d, b) || isInOwnBase(state, b)) continue;
+    const dist = Math.hypot(b.x - d.x, b.y - d.y);
+    if (dist > jaw + getDino(b.kind).radius + ab.hitReach || dist >= bestDist) continue;
+    if (Math.abs(angleDiff(angleTo(d, b), d.heading)) > (ab.arc ?? Math.PI / 4)) continue;
+    best = b;
+    bestDist = dist;
+  }
+  const reach = jaw + ab.hitReach;
+  const x = best ? (d.x + Math.cos(d.heading) * jaw + best.x) / 2 : d.x + Math.cos(d.heading) * reach;
+  const y = best ? (d.y + Math.sin(d.heading) * jaw + best.y) / 2 : d.y + Math.sin(d.heading) * reach;
+  state.events.push({ type: 'bite', dinoId: d.id, targetId: best?.id ?? null, x, y });
+  if (!best) return;
+  applyDamage(state, best, ab.damage * d.damageMul, d.id);
+  const shove = ab.knockback ?? 0;
+  best.x += Math.cos(d.heading) * shove;
+  best.y += Math.sin(d.heading) * shove;
+  resolveObstacles(state, best);
 }

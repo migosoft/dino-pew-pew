@@ -283,7 +283,7 @@ function generateFood(rng: ReturnType<typeof makeRng>, seed: number, world: Worl
     if (!obstacles.every((o) => (o.x - x) ** 2 + (o.y - y) ** 2 > (o.r + 20) ** 2)) continue;
     if (!dry(x, y, 24)) continue;
     const roll = rand(rng);
-    const species = roll < 0.4 ? 'triceratops' : roll < 0.8 ? 'velociraptor' : 'brontosaurus';
+    const species = roll < 0.4 ? 'triceratops' : roll < 0.72 ? 'velociraptor' : roll < 0.88 ? 'brontosaurus' : 'trex';
     carcasses.push(makeCarcass(WORLD_CARCASS_ID_BASE + carcasses.length, species, x, y, rand(rng) * Math.PI * 2));
   }
   return food.concat(carcasses);
