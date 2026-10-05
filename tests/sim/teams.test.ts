@@ -52,13 +52,12 @@ describe('teams', () => {
     expect(isInOwnBase(s, db)).toBe(true);
   });
 
-  it('dissolves a team after it has been empty for a while, freeing the slot', () => {
-    const { s, a, red } = setup();
+  it('keeps an empty team (it only loses its camp during a round)', () => {
+    const { s, a } = setup();
     removePlayer(s, a.id);
     expect(s.dinos.some((d) => d.playerId === a.id)).toBe(false);
     run(s, TEAM_EMPTY_TIMEOUT + 1);
-    expect(s.teams.some((t) => t.id === red.id)).toBe(false);
-    expect(createTeam(s)!.slot).toBe(red.slot);
+    expect(s.teams).toHaveLength(2);
   });
 });
 

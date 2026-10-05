@@ -3,6 +3,7 @@ import { getDino } from './defs/dinos';
 import { makeRng } from './rng';
 import { generateWorld, type WorldGenOptions } from './worldgen';
 import { createTeam, updatePlayers } from './players';
+import { updateRound } from './rounds';
 import { applyCurrent, moveDino, terrainSpeedFactor } from './systems/movement';
 import { resolveDinoContacts, resolveObstacles } from './systems/collision';
 import { selectFiringMounts, selectSideMounts, updateAim } from './systems/aiming';
@@ -60,6 +61,7 @@ export function step(state: GameState, inputs: Map<number, InputCommand>, dt: nu
   state.events = [];
   state.tick++;
   updatePlayers(state, dt);
+  updateRound(state, dt);
   // For the wild AI's neighbour searches below.
   buildDinoGrid(state);
 

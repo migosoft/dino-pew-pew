@@ -12,7 +12,7 @@ export const MAX_PLAYERS = 23;
 /** Radius of a team's camp area. */
 export const BASE_RADIUS = CAMP.radius;
 export const RESPAWN_TIME = 4;
-/** A team with no players dissolves after this many seconds, freeing its base. */
+/** During a round, a team with no players loses its camp after this many seconds. */
 export const TEAM_EMPTY_TIMEOUT = 30;
 export const TEAM_NAMES = ['GREEN', 'RED', 'GOLD', 'BLUE'];
 
@@ -95,17 +95,16 @@ export function spawnPlayerDino(state: GameState, player: PlayerState): Dino {
   return dino;
 }
 
-/** Respawn timers and dissolving empty teams. */
+/** Respawn timers (not for eliminated teams) and empty-team counters. */
 export function updatePlayers(state: GameState, dt: number): void {
   for (const p of state.players) {
-    if (p.dinoId !== null) continue;
+    if (p.dinoId !== null || findTeam(state, p.team)?.eliminated) continue;
     p.respawn -= dt;
     if (p.respawn <= 0) spawnPlayerDino(state, p);
   }
   for (const t of state.teams) {
     t.emptyFor = state.players.some((p) => p.team === t.id) ? 0 : t.emptyFor + dt;
   }
-  state.teams = state.teams.filter((t) => t.emptyFor < TEAM_EMPTY_TIMEOUT);
   healInCamps(state, dt);
 }
 

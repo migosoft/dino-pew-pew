@@ -1,5 +1,6 @@
 import type { GameState, TeamState } from './types';
-import { findTeam } from './world';
+import { findPlayer, findTeam } from './world';
+import { RESPAWN_TIME, TEAM_EMPTY_TIMEOUT } from './players';
 import { addCarcassFor } from './systems/feeding';
 
 /** Seconds the result is shown before the next round. */
@@ -40,8 +41,55 @@ export function eliminateTeam(state: GameState, teamId: string): void {
   const live = liveTeams(state);
   if (state.round.phase === 'playing' && live.length <= 1) {
     const winner = live[0]?.id ?? null;
-    state.round = { phase: 'over', timer: INTERMISSION, winner };
+    state.round.winner = winner;
+    setPhase(state, 'over', INTERMISSION);
     state.events.push({ type: 'roundWon', team: winner });
-    state.events.push({ type: 'phase', phase: 'over' });
   }
+}
+
+/** Seconds from "every team has a rider" to the start of the round. */
+export const COUNTDOWN = 5;
+
+function setPhase(state: GameState, phase: GameState['round']['phase'], timer: number): void {
+  state.round.phase = phase;
+  state.round.timer = timer;
+  state.events.push({ type: 'phase', phase });
+}
+
+/** waiting -> countdown -> playing -> over. Empty teams lose their camp during a round. */
+export function updateRound(state: GameState, dt: number): void {
+  if (!state.camps) return;
+  const r = state.round;
+  const staffed = state.teams.length >= 2 && state.teams.every((t) => state.players.some((p) => p.team === t.id));
+  if (r.phase === 'waiting') {
+    if (staffed) setPhase(state, 'countdown', COUNTDOWN);
+  } else if (r.phase === 'countdown') {
+    if (!staffed) return setPhase(state, 'waiting', 0);
+    r.timer -= dt;
+    if (r.timer <= 0) setPhase(state, 'playing', 0);
+  } else if (r.phase === 'playing') {
+    for (const t of state.teams) {
+      // One elimination may end the round: then nobody else falls this tick.
+      if (state.round.phase !== 'playing') break;
+      if (t.eliminated || t.emptyFor < TEAM_EMPTY_TIMEOUT) continue;
+      state.events.push({ type: 'campDown', team: t.id, by: null });
+      eliminateTeam(state, t.id);
+    }
+  } else {
+    r.timer = Math.max(0, r.timer - dt);
+  }
+}
+
+/** An eliminated rider joins a surviving team (with a new mount) and respawns in its camp. */
+export function switchTeam(state: GameState, playerId: number, teamId: string, kind: string): 'ok' | 'not-eliminated' | 'bad-team' {
+  const p = findPlayer(state, playerId);
+  if (!p || !findTeam(state, p.team)?.eliminated) return 'not-eliminated';
+  const to = findTeam(state, teamId);
+  if (!to || to.eliminated) return 'bad-team';
+  p.team = to.id;
+  p.kind = kind;
+  p.dinoId = null;
+  p.respawn = RESPAWN_TIME;
+  to.emptyFor = 0;
+  return 'ok';
 }
