@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createMatch } from '../../src/sim/sim';
 import { addPlayer, createTeam } from '../../src/sim/players';
-import { carcassTuples, decodeDino, encodeDino, encodeInput, parseClientMsg } from '../../src/net/protocol';
+import { carcassTuples, decodeDino, encodeDino, encodeInput, parseClientMsg, decodeStructure, encodeStructure, roundInfo, buildSnapshot, teamInfos, PROTOCOL_VERSION } from '../../src/net/protocol';
+import { towersOf } from '../../src/sim/camp';
 import { makeCarcass } from '../../src/sim/systems/feeding';
 import { SMALL } from '../helpers';
 
@@ -75,5 +76,40 @@ describe('client message validation', () => {
     for (const raw of ['nope', 'null', '[]', '{"t":"input","seq":"1"}', '{"t":"input","seq":1,"th":NaN}', '{"t":"teleport"}', JSON.stringify({ t: 'join', team: 'x'.repeat(100), kind: 'triceratops' })]) {
       expect(parseClientMsg(raw)).toBeNull();
     }
+  });
+});
+
+describe('protocol 4', () => {
+  it('round-trips structures, including the force field flag', () => {
+    const s = createMatch(3, SMALL, { teams: 2 });
+    const tower = towersOf(s, 'team1')[0];
+    tower.hp = 123.4;
+    tower.angle = 1.234;
+    tower.rebuildIn = 0;
+    const back = decodeStructure(encodeStructure(s, tower));
+    expect(back).toMatchObject({ id: tower.id, team: 'team1', kind: 'tower', x: tower.x, y: tower.y, hp: 124, maxHp: 400, field: false });
+    expect(back.angle).toBeCloseTo(1.234, 2);
+    const camp = s.structures.find((x) => x.kind === 'camp' && x.team === 'team1')!;
+    expect(decodeStructure(encodeStructure(s, camp)).field).toBe(true);
+  });
+
+  it('puts structures and the round into snapshots, and marks eliminated teams', () => {
+    const s = createMatch(3, SMALL, { teams: 2 });
+    s.teams[1].eliminated = true;
+    const snap = buildSnapshot(s, []);
+    expect(snap.structures).toHaveLength(12);
+    expect(snap.round).toEqual({ phase: 'waiting', timer: 0, winner: null });
+    expect(teamInfos(s)[1].eliminated).toBe(true);
+    expect(buildSnapshot(s, [], { round: null }).round).toBeUndefined();
+    expect(roundInfo(s).phase).toBe('waiting');
+  });
+
+  it('parses join with a setup, and switch', () => {
+    expect(parseClientMsg(JSON.stringify({ t: 'join', team: 'team0', kind: 'trex', setup: { teams: 2, map: 'crossing' } }))).toEqual({ t: 'join', team: 'team0', kind: 'trex', setup: { teams: 2, map: 'crossing' } });
+    expect(parseClientMsg(JSON.stringify({ t: 'join', team: 'team0', kind: 'trex', setup: { teams: 4, map: 'crossing' } }))).toBeNull();
+    expect(parseClientMsg(JSON.stringify({ t: 'join', team: 'team0', kind: 'trex' }))).toEqual({ t: 'join', team: 'team0', kind: 'trex' });
+    expect(parseClientMsg(JSON.stringify({ t: 'switch', team: 'team1', kind: 'velociraptor' }))).toEqual({ t: 'switch', team: 'team1', kind: 'velociraptor' });
+    expect(parseClientMsg(JSON.stringify({ t: 'switch', team: 7, kind: 'x' }))).toBeNull();
+    expect(PROTOCOL_VERSION).toBe(4);
   });
 });
