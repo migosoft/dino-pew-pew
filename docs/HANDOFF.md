@@ -1,10 +1,10 @@
 # Dinoriders: Handoff
 
-**Status (2026-10-05, end of session):** every requested feature is implemented. All 112 tests pass, and the type-check and build are clean. Everything is committed on `master`, and the working tree is clean. Nothing has been pushed.
-- Phase 8 has been checked in a browser: the 4096 px map, river currents (a raptor swept downstream and crawling, the streaks), and the playable T-Rex (four guns, bite, HUD cooldown, slowed in a deep river).
+**Status (2026-10-05, end of the phase 9 session):** every requested feature is implemented. All 112 tests pass and the type-check is clean. Everything is committed on `master` and pushed to `origin` (github.com/migosoft/dino-pew-pew).
+- The phase 9 art changes were checked in headless Chrome screenshots of `/?preview` and of the carcass art. The walk cadence has **not** been watched in a running game yet.
 - The Docker image on :8080 has **not** been rebuilt since Phase 6. Run `docker compose up --build -d` when the user wants it.
 
-See [Latest session](#latest-session-phase-8).
+See [Latest session](#latest-session-phase-9-tuning).
 
 This document gives the state of the project, how it fits together, and what to watch out for. For how to play and run it, see [README.md](../README.md). The design history is in [docs/superpowers/specs/](superpowers/specs/).
 
@@ -39,9 +39,31 @@ A top-down pixel-art multiplayer shooter. Players ride armed dinosaurs in one pe
 | `e4cbfa6` | 8c: river visuals (streaks downstream, drifting ripples, fish only in lakes) |
 | `e2c128c` | 8d: T-Rex sim (head and shoulder guns, bite ability, wild carnivore) |
 | `eb9d41e` | 8e: T-Rex art, bite animation and effect, carcass |
-| (latest) | README and handoff for Phase 8 |
+| `74b2636` | README and handoff for Phase 8 |
+| `7030ea7` | 9a: Brontosaurus `broadsideGun` damage 6 → 8 |
+| `d4e3dcd` | 9b: smaller water splash where bullets land |
+| `8088c44` | 9c: heavier gait, stride length grows with body size |
+| `c744432` | 9d: T-Rex 1.2× bigger (`REX_SCALE`) |
+| `7e61066` | 9e: Brontosaurus carcass drawn at `BRONTO_SCALE` |
+| `27c0772` | 9f: leaner Brontosaurus body, neck, head and tail |
+| (latest) | handoff for Phase 9 |
 
-## Latest session: phase 8
+## Latest session: phase 9 (tuning)
+**What was done** (small tuning requests, one commit each):
+1. **Brontosaurus broadside guns:** `broadsideGun` damage 6 → 8 (`weapons.ts`). One side now does about 46 DPS, close to the Triceratops (about 47); a side arc plus the rear gun, where they overlap, about 66. The T-Rex is about 72 with all four guns on target.
+2. **Bullet splash in water:** spent bolts call `splash(x, y, 3, 2)` in `GameScene` (it was size 6 with 6 droplets). `WaterView.splash` takes an optional droplet count; the other splashes (dash, leap, whip, bite) are unchanged.
+3. **Heavier gait** (`DinoView.ts`): the leg pose changes every `strideLen(radius)` px, which is `STRIDE_PER_POSE · (radius / STRIDE_RADIUS)^0.75`. That gives Velociraptor 7 (unchanged), Triceratops about 10, T-Rex about 14 and Brontosaurus about 16. The walking tail sway uses the same stride, so it stays in step. Footstep rings in water (`WaterView.trackDinos`) still use their own step length, `radius · 0.9`.
+4. **T-Rex 1.2× bigger:** `REX_SCALE` in `trexArt.ts` works like `BRONTO_SCALE`: canvas sizes `2 · r(28)` and `2 · r(22)` (kept even so the pivot stays on the pixel grid), every coordinate scaled, 1 px details kept at 1 px, gun sprites unscaled. In `dinos.ts`: radius 15 → 18, head (17, 0), tail (−13, 0), seat (11, 0), head guns (5, ±10), shoulder guns (5, ±16). **Keep the two in step** when resizing.
+5. **Brontosaurus carcass at living size:** `drawBrontosaurusCarcass` (`foodArt.ts`) is laid out in design pixels and drawn at `BRONTO_SCALE` through `X`/`Y`/`thick` helpers. It is about 140 px long, against about 146 px for the living animal (it was 92 px).
+6. **Leaner Brontosaurus** (`brontosaurusArt.ts`): torso half-width 12.5 → 10.2 design px (same length), shoulders 5.6 × 5.8, legs at ±9/±9.5 with slightly smaller feet, neck root 4.0 (tip 2.2), tail root 5.0, a narrower head. The platform and gun mounts did not move, so the pods hang a little further past the flanks. The hitbox radius stays 22.
+
+**Not done, worth considering:**
+- The **T-Rex carcass** is still about 52 px long, against about 90 px for the bigger living T-Rex. It could get the same treatment as the Brontosaurus carcass (`REX_SCALE` plus wider proportions). The Triceratops and raptor carcasses were not checked against their living sizes.
+- **Balance after 9a:** with 220 HP and wide side arcs, the Brontosaurus may now be the strongest mount. Watch it in play.
+
+**How the art was checked:** a throwaway page in the project root (`_artcheck.html`, deleted afterwards) imported the draw functions from `/src/...` through the Vite dev server. It and `/?preview=<kind>&zoom=2&focus=row,col` were captured with `chrome.exe --headless=new --virtual-time-budget=6000 --screenshot=...`. For before/after shots, `git stash` the change, shoot, then `git stash pop`.
+
+## Phase 8
 **What was done** (the user supplied a Dino Riders T-Rex image, the cover of a French *Pif* magazine):
 1. **Map 4096 px** (`DEFAULT_TILES = 256`). It is still one ground texture: 4096 is the safe single-texture limit, so going bigger needs the ground split into chunk textures (`WorldView`/`drawGround`).
    - `generateWorld` takes about 120–170 ms in Node (it was about 100 ms at 3072 px).
@@ -63,8 +85,8 @@ A top-down pixel-art multiplayer shooter. Players ride armed dinosaurs in one pe
    - Ripples drift with the current.
    - Fish live only in still deep water (lakes).
 5. **T-Rex** (`trex` in `dinos.ts`):
-   - **Stats:** carnivore, radius 15, 170 HP, speed 66, bounty 35, `wadeSpeed` 0.75.
-   - **Size:** its art is about 55% as long as the Brontosaurus's (real animals: 12 m vs 22 m).
+   - **Stats:** carnivore, radius 15 (18 since phase 9d, with all T-Rex sizes scaled by `REX_SCALE`), 170 HP, speed 66, bounty 35, `wadeSpeed` 0.75.
+   - **Size:** its art is about 55% as long (about 60% since phase 9d) as the Brontosaurus's (real animals: 12 m vs 22 m).
    - **Guns:**
      - `headGunL`/`headGunR`: parent `head`, at (4, ±8), the two ends of the barrel across the head harness. Weapon `rexHeadGun`: 4 damage every 0.22 s.
      - `shoulderGunL`/`shoulderGunR`: parent `body`, at (4, ±13). Weapon `rexShoulderCannon`: 8 damage every 0.45 s.
