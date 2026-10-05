@@ -90,6 +90,6 @@ describe('feed lines', () => {
 
 describe('camp status clamp', () => {
   it('keeps the hp fraction within 0..1', () => {
-    expect(campStatus([st('a', 'camp', 5000)], teams)[1].hpFrac).toBe(1);
+    expect(campStatus([st('a', 'camp', 5000)], teams)[0].hpFrac).toBe(1);
   });
 });
