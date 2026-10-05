@@ -26,7 +26,7 @@ import {
   drawShadowEllipse,
   drawTrunk,
 } from './worldArt';
-import { WAVE_VARIANTS, drawDroplet, drawFish, drawFoamRing, drawRipple, drawWave } from './waterArt';
+import { WAVE_VARIANTS, drawCurrentStreak, drawDroplet, drawFish, drawFoamRing, drawRipple, drawWave } from './waterArt';
 import { FONT_CHARS, FONT_H, FONT_W, drawFont } from './font';
 import { drawRaptorBody, drawRaptorHead, drawRaptorHeadArmor, drawRaptorSaddleArmor, drawRaptorSideGun } from './raptorArt';
 import { drawBroadsideGun, drawBrontosaurusBody, drawBrontosaurusHead, drawBrontosaurusPlatform, drawTailGun } from './brontosaurusArt';
@@ -130,6 +130,8 @@ export function generateTextures(scene: Phaser.Scene): void {
   for (let v = 0; v < WAVE_VARIANTS; v++) {
     addImage(scene, `wave_${v}_deep`, drawWave(v, true));
     addImage(scene, `wave_${v}_shallow`, drawWave(v, false));
+    addImage(scene, `current_${v}_deep`, drawCurrentStreak(v, true));
+    addImage(scene, `current_${v}_shallow`, drawCurrentStreak(v, false));
   }
   for (const frame of [0, 1] as const) {
     addStrip(scene, `fish_${frame}_0`, drawFish(frame, false), FISH_DIRS);

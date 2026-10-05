@@ -52,6 +52,19 @@ export function drawWave(variant: number, deep: boolean): HTMLCanvasElement {
   return c.canvas;
 }
 
+/** A streak of running water along a river, facing +x: bright in the middle, fading at both ends. */
+export function drawCurrentStreak(variant: number, deep: boolean): HTMLCanvasElement {
+  const w = 6 + variant * 3;
+  const c = makeCanvas(w, 2);
+  const [hi, lo] = deep ? ['#8cc4d6', '#2a5a72'] : ['#b4e4d4', '#4a8a7c'];
+  for (let x = 0; x < w; x++) {
+    const mid = Math.abs(x - (w - 1) / 2) < w / 4;
+    px(c, x, 0, mid ? hi : lo);
+    if (x > 1 && x < w - 2 && hash2(x, variant, 9) < 0.5) px(c, x, 1, lo);
+  }
+  return c.canvas;
+}
+
 /** Dark fish shadow seen through the water, facing +x. `frame` flips the tail. */
 export function drawFish(frame: 0 | 1, big: boolean): HTMLCanvasElement {
   const c = makeCanvas(16, 10);

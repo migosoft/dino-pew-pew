@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import type { Dino, World } from '../../sim/types';
 import { Tile } from '../../sim/types';
 import { getDino } from '../../sim/defs/dinos';
-import { isAirborne, tileAt } from '../../sim/world';
+import { flowAt, isAirborne, tileAt } from '../../sim/world';
 import { frameForAngle, hash2 } from './textures/pixel';
 import { FISH_DIRS } from './textures';
 import { RIPPLE_R, WAVE_VARIANTS } from './textures/waterArt';
@@ -10,7 +10,7 @@ import { DEPTH } from './depth';
 import type { Wading } from './DinoView';
 
 // The living water, all client-side and purely cosmetic: wave crests that shimmer and
-// drift, fish shadows that swim in deep water and dart away from dinos, and ripple rings
+// drift (streaks that run downstream in rivers), fish shadows that swim in deep water and dart away from dinos, and ripple rings
 // from footsteps, wakes and splashes.
 
 /** Wave points are bucketed in cells this big, so only the visible ones are drawn. */
@@ -29,6 +29,10 @@ const MAX_RIPPLES = 160;
 const WAKE_INTERVAL = 0.12;
 /** Seconds between the slow rings around a dino standing in deep water. */
 const IDLE_RING_INTERVAL = 1.3;
+/** A river streak runs this far downstream before it fades and starts over. */
+const STREAK_RUN = 26;
+/** Streaks move a bit faster than the current itself, so the flow reads at a glance. */
+const STREAK_SPEED = 1.3;
 
 interface WavePoint {
   x: number;
@@ -37,6 +41,9 @@ interface WavePoint {
   variant: number;
   phase: number;
   speed: number;
+  /** River current here (px/s); zero in lakes. */
+  fx: number;
+  fy: number;
 }
 
 interface Fish {
@@ -63,6 +70,9 @@ interface Ripple {
   /** Ellipse stretch along `angle` (wakes are long). */
   stretch: number;
   angle: number;
+  /** River current carrying the ring along (px/s). */
+  vx: number;
+  vy: number;
 }
 
 interface Walker {
@@ -108,7 +118,8 @@ export class WaterView {
         const key = Math.floor(py / CELL) * this.cols + Math.floor(px / CELL);
         let list = this.cells.get(key);
         if (!list) this.cells.set(key, (list = []));
-        list.push({ x: px, y: py, deep, variant: Math.floor(h * 97) % WAVE_VARIANTS, phase: h * 40, speed: 0.9 + hash2(x, y, world.seed + 3) * 1.1 });
+        const flow = flowAt(world, px, py);
+        list.push({ x: px, y: py, deep, variant: Math.floor(h * 97) % WAVE_VARIANTS, phase: h * 40, speed: 0.9 + hash2(x, y, world.seed + 3) * 1.1, fx: flow.x, fy: flow.y });
       }
     }
     this.droplets = scene.add
@@ -158,6 +169,10 @@ export class WaterView {
         const list = this.cells.get(r * this.cols + c);
         if (!list) continue;
         for (const w of list) {
+          if (w.fx !== 0 || w.fy !== 0) {
+            used = this.drawStreak(w, used);
+            continue;
+          }
           // Each crest swells and fades on its own beat while drifting with the wind.
           const s = Math.sin(this.time * w.speed + w.phase);
           if (s < 0.15) continue;
@@ -167,12 +182,34 @@ export class WaterView {
           img
             .setTexture(`wave_${w.variant}_${w.deep ? 'deep' : 'shallow'}`)
             .setPosition(Math.round(w.x + drift), Math.round(w.y - s))
+            .setRotation(0)
             .setAlpha((s - 0.15) * (w.deep ? 0.95 : 0.75))
             .setVisible(true);
         }
       }
     }
     for (let i = used; i < this.wavePool.length; i++) this.wavePool[i].setVisible(false);
+  }
+
+  /** A river streak: runs downstream from its spot over STREAK_RUN px, fading in and out, then starts over. */
+  private drawStreak(w: WavePoint, used: number): number {
+    const v = Math.hypot(w.fx, w.fy);
+    const run = (this.time * v * STREAK_SPEED + w.phase * 7) % STREAK_RUN;
+    const t = run / STREAK_RUN;
+    const ux = w.fx / v;
+    const uy = w.fy / v;
+    const x = w.x + ux * (run - STREAK_RUN / 2);
+    const y = w.y + uy * (run - STREAK_RUN / 2);
+    // Don't run up onto the bank.
+    if (!this.isWet(x, y)) return used;
+    const img = this.wavePool[used] ?? (this.wavePool[used] = this.scene.add.image(0, 0, 'wave_0_deep').setDepth(DEPTH.water + 2));
+    img
+      .setTexture(`current_${w.variant}_${w.deep ? 'deep' : 'shallow'}`)
+      .setPosition(Math.round(x), Math.round(y))
+      .setRotation(Math.atan2(uy, ux))
+      .setAlpha(Math.sin(t * Math.PI) * (w.deep ? 0.9 : 0.7) * Math.min(1, v / 15))
+      .setVisible(true);
+    return used + 1;
   }
 
   /** Footstep rings, wakes and idle rings for every dino in the water. */
@@ -225,7 +262,8 @@ export class WaterView {
     if (this.ripples.length >= MAX_RIPPLES) this.recycle(this.ripples.shift()!);
     const img = this.ripplePool.pop() ?? this.scene.add.image(0, 0, 'ripple').setDepth(DEPTH.water + 3);
     img.setVisible(true).setPosition(Math.round(x), Math.round(y)).setRotation(angle);
-    this.ripples.push({ img, x, y, age: 0, life, from, to, alpha, stretch, angle });
+    const flow = flowAt(this.world, x, y);
+    this.ripples.push({ img, x, y, age: 0, life, from, to, alpha, stretch, angle, vx: flow.x, vy: flow.y });
   }
 
   private recycle(r: Ripple): void {
@@ -244,14 +282,19 @@ export class WaterView {
       const t = r.age / r.life;
       // Fast at first, then slowing: like a real ring spreading out.
       const s = r.from + (r.to - r.from) * (1 - (1 - t) ** 2);
-      r.img.setScale(s * r.stretch, s).setAlpha(r.alpha * (1 - t));
+      r.x += r.vx * dt;
+      r.y += r.vy * dt;
+      r.img.setPosition(Math.round(r.x), Math.round(r.y)).setScale(s * r.stretch, s).setAlpha(r.alpha * (1 - t));
       keep.push(r);
     }
     this.ripples = keep;
   }
 
+  /** Fish live in still deep water: lakes, not rivers. */
   private deep(x: number, y: number): boolean {
-    return tileAt(this.world, x, y) === Tile.Deep;
+    if (tileAt(this.world, x, y) !== Tile.Deep) return false;
+    const f = flowAt(this.world, x, y);
+    return f.x === 0 && f.y === 0;
   }
 
   private updateFish(view: Phaser.Geom.Rectangle, dinos: Dino[], dt: number): void {
