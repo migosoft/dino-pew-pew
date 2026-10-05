@@ -125,7 +125,9 @@ export class GameScene extends Phaser.Scene {
     for (const e of mirror.takeEvents(rt)) this.handleEvent(e, players);
 
     this.foodView.setPlants(this.net.takePlantUpdates());
-    this.foodView.setCarcasses(mirror.latest()!.carcasses);
+    const carcasses = this.net.takeCarcassUpdates();
+    if (carcasses.changed.length) this.foodView.upsertCarcasses(carcasses.changed);
+    if (carcasses.gone.length) this.foodView.removeCarcasses(carcasses.gone);
     const dinos = mirror.dinosAt(rt);
     if (time - this.lastFeedFx > 250) {
       this.lastFeedFx = time;

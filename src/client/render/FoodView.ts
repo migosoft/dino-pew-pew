@@ -45,10 +45,9 @@ export class FoodView {
     }
   }
 
-  setCarcasses(list: CarcassTuple[]): void {
-    const seen = new Set<number>();
+  /** Add new carcasses and update changed ones. */
+  upsertCarcasses(list: CarcassTuple[]): void {
     for (const [id, species, x, y, heading, food, maxFood] of list) {
-      seen.add(id);
       const stage = stageOf(food, maxFood);
       const kind = (CARCASS_KINDS as readonly string[]).includes(species) ? species : 'triceratops';
       let c = this.carcasses.get(id);
@@ -61,9 +60,11 @@ export class FoodView {
         c.sprite.setTexture(`carcass_${kind}_${stage}`, c.sprite.frame.name);
       }
     }
-    for (const [id, c] of this.carcasses) {
-      if (seen.has(id)) continue;
-      c.sprite.destroy();
+  }
+
+  removeCarcasses(ids: number[]): void {
+    for (const id of ids) {
+      this.carcasses.get(id)?.sprite.destroy();
       this.carcasses.delete(id);
     }
   }

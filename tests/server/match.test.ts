@@ -75,9 +75,9 @@ describe('game server', () => {
     const snap = await a.waitFor<SnapshotMsg>((m) => m.t === 'snap');
     expect(snap.dinos).toHaveLength(3);
     expect(snap.teams).toHaveLength(2);
-    const teamOf = (pid: number) => snap.players.find((p) => p.id === pid)!.team;
+    const teamOf = (pid: number) => snap.players!.find((p) => p.id === pid)!.team;
     expect(teamOf(wa.playerId)).not.toBe(teamOf(wb.playerId));
-    expect(snap.teams.find((t) => t.id === lobby.teams[0].id)!.players).toBe(2);
+    expect(snap.teams!.find((t) => t.id === lobby.teams[0].id)!.players).toBe(2);
   });
 
   it('applies inputs, acknowledges their sequence numbers and ignores stale ones', async () => {
@@ -125,8 +125,29 @@ describe('game server', () => {
     a.send({ t: 'buy', stat: 'teleport' }); // invalid stat: ignored
     await new Promise((r) => setTimeout(r, 30));
     await ticks(3);
-    const snap = await a.waitFor<SnapshotMsg>((m) => m.t === 'snap' && m.players.some((p) => p.id === w.playerId && p.upgrades.damage === 1));
-    expect(snap.players[0].money).toBe(1000 - 60);
+    const snap = await a.waitFor<SnapshotMsg>((m) => m.t === 'snap' && !!m.players?.some((p) => p.id === w.playerId && p.upgrades.damage === 1));
+    expect(snap.players![0].money).toBe(1000 - 60);
+  });
+
+  it('sends carcasses and players only when they change', async () => {
+    const host = await startServer();
+    const a = await client(host);
+    a.send({ t: 'join', team: NEW_TEAM, kind: 'triceratops' });
+    const w = await a.waitFor<WelcomeMsg>((m) => m.t === 'welcome');
+    const worldCarcasses = match!.state.food.filter((f) => f.kind === 'carcass');
+    expect(w.carcasses.map((c) => c[0]).sort()).toEqual(worldCarcasses.map((f) => f.id).sort());
+    await ticks(6);
+    const [first, second] = a.msgs.filter((m): m is SnapshotMsg => m.t === 'snap');
+    expect(first.players).toHaveLength(1);
+    expect(first.carcasses).toHaveLength(worldCarcasses.length);
+    expect(second.players).toBeUndefined();
+    expect(second.teams).toBeUndefined();
+    expect(second.carcasses).toHaveLength(0);
+    // A carcass that is eaten up is reported gone.
+    worldCarcasses[0].food = 0;
+    await ticks(3);
+    const third = a.msgs.filter((m): m is SnapshotMsg => m.t === 'snap')[2];
+    expect(third.gone).toEqual([worldCarcasses[0].id]);
   });
 
   it('disconnects clients that flood messages', async () => {

@@ -3,14 +3,14 @@
 // Inputs carry a sequence number that snapshots acknowledge, so client-side
 // prediction/reconciliation can be added later without changing the protocol shape.
 
-import type { Dino, GameEvent, GameState, InputCommand, Vec2 } from '../sim/types';
+import type { Dino, FoodSource, GameEvent, GameState, InputCommand, Vec2 } from '../sim/types';
 import { getDino } from '../sim/defs/dinos';
 import { findTeam } from '../sim/world';
 import { clamp } from '../sim/math';
 import { teamName } from '../sim/players';
 import { UPGRADE_STATS, type UpgradeStat, type Upgrades } from '../sim/upgrades';
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 /** The server broadcasts a snapshot every N simulation ticks (60 Hz / 3 = 20 Hz). */
 export const SNAPSHOT_EVERY = 3;
 export const NEW_TEAM = 'new';
@@ -117,6 +117,8 @@ export interface WelcomeMsg {
   tickRate: number;
   /** Current food of every plant that is not full. */
   plants: PlantTuple[];
+  /** Every carcass in the world right now (snapshots then send only changes). */
+  carcasses: CarcassTuple[];
 }
 
 /** Compact dino encoding: positions in 1/10 px, angles in milliradians. */
@@ -153,11 +155,15 @@ export interface SnapshotMsg {
   /** Last input sequence number the server applied for the receiving player. */
   ack: number;
   dinos: DinoTuple[];
-  players: PlayerInfo[];
-  teams: TeamInfo[];
+  /** Left out when unchanged since the previous snapshot. */
+  players?: PlayerInfo[];
+  /** Left out when unchanged since the previous snapshot. */
+  teams?: TeamInfo[];
   events: TimedEvent[];
-  /** All current carcasses. */
+  /** Carcasses that appeared or whose (rounded) food changed since the previous snapshot. */
   carcasses: CarcassTuple[];
+  /** Ids of carcasses eaten up or rotted away since the previous snapshot. */
+  gone: number[];
   /** Plants whose (rounded) food level changed since the previous snapshot. */
   plants: PlantTuple[];
 }
@@ -267,7 +273,8 @@ export function playerInfos(state: GameState): PlayerInfo[] {
     team: p.team,
     kind: p.kind,
     dinoId: p.dinoId,
-    respawn: Math.max(0, Math.round(p.respawn * 10) / 10),
+    // Whole seconds: the list then changes once a second while someone waits, not every tick.
+    respawn: Math.max(0, Math.ceil(p.respawn)),
     kills: p.kills,
     deaths: p.deaths,
     money: p.money,
@@ -275,10 +282,12 @@ export function playerInfos(state: GameState): PlayerInfo[] {
   }));
 }
 
+export function encodeCarcass(f: FoodSource): CarcassTuple {
+  return [f.id, f.species ?? '', q(f.x, 1), q(f.y, 1), q(f.heading ?? 0, 100), Math.ceil(f.food), Math.round(f.maxFood)];
+}
+
 export function carcassTuples(state: GameState): CarcassTuple[] {
-  return state.food
-    .filter((f) => f.kind === 'carcass')
-    .map((f) => [f.id, f.species ?? '', q(f.x, 1), q(f.y, 1), q(f.heading ?? 0, 100), Math.ceil(f.food), Math.round(f.maxFood)]);
+  return state.food.filter((f) => f.kind === 'carcass').map(encodeCarcass);
 }
 
 /** Rounded food level of every plant, for change detection. */
@@ -288,17 +297,30 @@ export function plantLevels(state: GameState): Map<number, number> {
   return m;
 }
 
-/** Snapshot body without the per-recipient `ack`. `plants` = changed plant levels. */
-export function buildSnapshot(state: GameState, events: TimedEvent[], plants: PlantTuple[] = []): Omit<SnapshotMsg, 'ack'> {
+/** What changed since the previous snapshot. Anything not given is sent in full (players, teams, carcasses) or empty. */
+export interface SnapshotChanges {
+  plants?: PlantTuple[];
+  carcasses?: CarcassTuple[];
+  gone?: number[];
+  /** null: unchanged, left out of the snapshot. */
+  players?: PlayerInfo[] | null;
+  teams?: TeamInfo[] | null;
+}
+
+/** Snapshot body without the per-recipient `ack`. */
+export function buildSnapshot(state: GameState, events: TimedEvent[], changes: SnapshotChanges = {}): Omit<SnapshotMsg, 'ack'> {
+  const players = changes.players === undefined ? playerInfos(state) : changes.players;
+  const teams = changes.teams === undefined ? teamInfos(state) : changes.teams;
   return {
     t: 'snap',
     tick: state.tick,
     dinos: state.dinos.filter((d) => d.alive).map(encodeDino),
-    players: playerInfos(state),
-    teams: teamInfos(state),
+    ...(players ? { players } : {}),
+    ...(teams ? { teams } : {}),
     events,
-    carcasses: carcassTuples(state),
-    plants,
+    carcasses: changes.carcasses ?? carcassTuples(state),
+    gone: changes.gone ?? [],
+    plants: changes.plants ?? [],
   };
 }
 

@@ -27,6 +27,9 @@ export class Mirror {
   private snaps: SnapshotMsg[] = [];
   private events: TimedEvent[] = [];
   private offset: number | null = null;
+  /** Snapshots leave players and teams out while unchanged: keep the last ones sent. */
+  private lastPlayers: PlayerInfo[] = [];
+  private lastTeams: TeamInfo[] = [];
   private projectiles = new Map<number, ClientProjectile>();
   /** Where projectiles ran out of range since the last takeSpent() (for splashes). */
   private spent: { x: number; y: number }[] = [];
@@ -34,6 +37,8 @@ export class Mirror {
   push(snap: SnapshotMsg, nowMs: number): void {
     if (this.snaps.length && snap.tick <= this.snaps[this.snaps.length - 1].tick) return;
     this.snaps.push(snap);
+    if (snap.players) this.lastPlayers = snap.players;
+    if (snap.teams) this.lastTeams = snap.teams;
     if (this.snaps.length > MAX_SNAPSHOTS) this.snaps.shift();
     for (const e of snap.events) this.events.push(e);
 
@@ -128,10 +133,10 @@ export class Mirror {
   }
 
   players(): PlayerInfo[] {
-    return this.latest()?.players ?? [];
+    return this.lastPlayers;
   }
 
   teams(): TeamInfo[] {
-    return this.latest()?.teams ?? [];
+    return this.lastTeams;
   }
 }

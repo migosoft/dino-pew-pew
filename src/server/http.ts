@@ -63,7 +63,8 @@ export function createAppServer(opts: AppOptions): AppServer {
     }
     serveStatic(opts.staticDir, url, res);
   });
-  const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
+  // Snapshots are repetitive JSON: compression shrinks them several times over (browsers negotiate it automatically).
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024, perMessageDeflate: { threshold: 1024, zlibDeflateOptions: { level: 3 } } });
   server.on('upgrade', (req, socket, head) => {
     if ((req.url ?? '').split('?')[0] !== '/ws') return socket.destroy();
     wss.handleUpgrade(req, socket, head, (ws) => opts.onConnection(ws, req));

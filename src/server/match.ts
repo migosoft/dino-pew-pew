@@ -10,11 +10,15 @@ import {
   PROTOCOL_VERSION,
   SNAPSHOT_EVERY,
   buildSnapshot,
+  carcassTuples,
+  encodeCarcass,
   isKnownTeam,
   parseClientMsg,
   plantLevels,
+  playerInfos,
   speciesInfo,
   teamInfos,
+  type CarcassTuple,
   type LobbyInfo,
   type PlantTuple,
   type ServerMsg,
@@ -44,6 +48,11 @@ export class Match {
   private pending: TimedEvent[] = [];
   /** Plant food levels as last broadcast, to send only changes. */
   private sentPlants = new Map<number, number>();
+  /** Carcass food levels as last broadcast, to send only new, changed and gone carcasses. */
+  private sentCarcasses = new Map<number, number>();
+  /** Players and teams as last broadcast (JSON), to leave them out while unchanged. */
+  private sentPlayers = '';
+  private sentTeams = '';
   private nameCounter = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastTime = 0;
@@ -111,7 +120,37 @@ export class Match {
       this.sentPlants.set(id, food);
       changed.push([id, food]);
     }
-    const body = JSON.stringify(buildSnapshot(this.state, this.pending, changed));
+    const carcasses: CarcassTuple[] = [];
+    const live = new Set<number>();
+    for (const f of this.state.food) {
+      if (f.kind !== 'carcass') continue;
+      live.add(f.id);
+      const food = Math.ceil(f.food);
+      if (this.sentCarcasses.get(f.id) === food) continue;
+      this.sentCarcasses.set(f.id, food);
+      carcasses.push(encodeCarcass(f));
+    }
+    const gone: number[] = [];
+    for (const id of this.sentCarcasses.keys()) {
+      if (live.has(id)) continue;
+      this.sentCarcasses.delete(id);
+      gone.push(id);
+    }
+    const players = playerInfos(this.state);
+    const teams = teamInfos(this.state);
+    const playersJson = JSON.stringify(players);
+    const teamsJson = JSON.stringify(teams);
+    const body = JSON.stringify(
+      buildSnapshot(this.state, this.pending, {
+        plants: changed,
+        carcasses,
+        gone,
+        players: playersJson === this.sentPlayers ? null : players,
+        teams: teamsJson === this.sentTeams ? null : teams,
+      }),
+    );
+    this.sentPlayers = playersJson;
+    this.sentTeams = teamsJson;
     this.pending = [];
     // Splice the per-recipient ack into the shared body instead of re-serializing.
     const rest = body.slice(1);
@@ -177,8 +216,10 @@ export class Match {
     }
     const player = addPlayer(state, teamId, msg.kind, `RIDER ${++this.nameCounter}`);
     s.playerId = player.id;
+    // The newcomer needs the full players and teams in its first snapshot.
+    this.sentPlayers = this.sentTeams = '';
     // New clients regenerate full plants from the seed; tell them which ones are already eaten.
     const plants: PlantTuple[] = state.food.filter((f) => f.kind !== 'carcass' && f.food < f.maxFood).map((f) => [f.id, this.sentPlants.get(f.id) ?? Math.ceil(f.food)]);
-    this.send(s, { t: 'welcome', protocol: PROTOCOL_VERSION, playerId: player.id, seed: this.seed, tick: state.tick, tickRate: TICK_RATE, plants });
+    this.send(s, { t: 'welcome', protocol: PROTOCOL_VERSION, playerId: player.id, seed: this.seed, tick: state.tick, tickRate: TICK_RATE, plants, carcasses: carcassTuples(state) });
   }
 }
