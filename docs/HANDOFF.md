@@ -48,7 +48,8 @@ A top-down pixel-art multiplayer shooter. Players ride armed dinosaurs in one pe
    - **Bending neck and tail** (`src/client/render/chains.ts`, drawn by `DinoView.updateChain`):
      - The neck is 5 links from the shoulder pivot (`head.offset`), with the head at the end. The head yaw is spread over the links, so the neck curves toward where the head looks.
      - The tail is 7 links from `TailDef.offset`. A walking sway travels down it as a wave, and the whip swings it with a lag toward the tip.
-     - Each link is a capsule sprite (`drawChainSegment`) whose back cap has no outline, so the joints don't show.
+     - **All three species have chained tails** (Triceratops 3 links, Velociraptor 4, Brontosaurus 7). Their body sprites no longer include a tail. Follow-through: each link eases toward the direction of the link before it (`TRAIL_RATE`), so a turning dino's tail swings round behind it, the tip last. Mid-leap the raptor's tail rises with the body, and its stamped shadow shrinks.
+     - Each link is a capsule sprite (`drawChainSegment` in `textures/chainArt.ts`, marks per species: `ChainStyle`) whose back cap has no outline, so the joints don't show.
      - **Shadow:** opaque masks of the body, every link and the head are stamped into one render texture per dino and shown at shadow strength. It follows every bend and doesn't darken where pieces overlap.
      - `/?preview=brontosaurus&yaw=0.7&whip=0.3` shows a turned head and a frozen whip.
      - The sim is unchanged: `head.offset` stays the neck pivot and aiming uses the body mounts.

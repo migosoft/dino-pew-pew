@@ -1,4 +1,5 @@
 import { METAL, METAL_DARK, METAL_LIGHT, RIVET, type DinoPalette } from './dinoArt';
+import { taperedChain, type ChainSegment } from './chainArt';
 import { checker, ellipse, line, litShade, makeCanvas, outline, px, rect } from './pixel';
 
 // Procedural top-down Velociraptor, its head, the rider armor and the twin side guns.
@@ -9,7 +10,10 @@ const BONE = '#efe4c2';
 const BONE_DARK = '#b5a57c';
 const EYE = '#100c08';
 
-/** Raptor body incl. two hind legs and long stiff tail; canvas center = body center (sim position). pose 0/1 alternate legs for running. */
+/** Tail links from the root behind the hips (`tail.offset` in dinos.ts) to the tip. */
+export const RAPTOR_TAIL: ChainSegment[] = taperedChain(4, 3.75, 2.8, 0.5);
+
+/** Raptor body incl. two hind legs; the tail is separate links (RAPTOR_TAIL). Canvas center = body center (sim position). pose 0/1 alternate legs for running. */
 export function drawRaptorBody(p: DinoPalette, pose: 0 | 1): HTMLCanvasElement {
   const c = makeCanvas(48, 48);
   const cx = 24;
@@ -31,16 +35,6 @@ export function drawRaptorBody(p: DinoPalette, pose: 0 | 1): HTMLCanvasElement {
     // Sickle claw on the inner toe.
     px(c, cx + 2 + s, cy + ly + 0.5 - side, BONE_DARK);
   }
-  // Long stiff tail tapering to the rear (x = -20 .. -6).
-  for (let x = -20; x <= -5; x++) {
-    const t = (x + 20) / 15;
-    const half = 0.5 + t * 2.3;
-    for (let y = -Math.ceil(half); y <= Math.ceil(half); y++) {
-      if (Math.abs(y + 0.5) > half) continue;
-      const ny = (y + 0.5) / half;
-      px(c, cx + x, cy + y, ny < -0.35 ? p.light : ny > 0.45 ? p.dark : p.base);
-    }
-  }
   // Slim torso.
   ellipse(c, cx, cy, 7, 4.5, (nx, ny, x, y) => litShade(nx, ny, x, y, p.dark, p.base, p.light));
   // Lighter belly stripe along the right flank.
@@ -51,20 +45,15 @@ export function drawRaptorBody(p: DinoPalette, pose: 0 | 1): HTMLCanvasElement {
     px(c, cx + 5, cy + ay, p.dark);
     px(c, cx + 6, cy + ay, BONE_DARK);
   }
-  // Dark raptor stripes across the back and tail.
+  // Dark raptor stripes across the back (the tail links carry their own).
   const stripes: [number, number][] = [
     [-5, 2],
     [4, 2],
-    [-8, 2],
-    [-11, 1],
-    [-14, 1],
-    [-17, 0],
   ];
   for (const [sx, hh] of stripes) {
     for (let y = -hh - 1; y <= hh; y++) px(c, cx + sx, cy + y, p.dark);
   }
-  // Feather crest accents along the spine of the tail and toward the neck (team accent).
-  for (let x = -18; x <= -7; x += 3) px(c, cx + x, cy - 1, x % 2 === 0 ? p.frillLight : p.frill);
+  // Feather crest accents toward the neck (team accent; the tail links carry the rest).
   px(c, cx + 5, cy - 1, p.frill);
   px(c, cx + 6, cy - 1, p.frillLight);
   px(c, cx + 5, cy, p.frill);

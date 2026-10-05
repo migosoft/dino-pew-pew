@@ -1,5 +1,6 @@
-import { checker, ellipse, line, litShade, makeCanvas, outline, px, rect } from './pixel';
+import { ellipse, line, litShade, makeCanvas, outline, px, rect } from './pixel';
 import { METAL, METAL_DARK, METAL_LIGHT, RIVET, type DinoPalette } from './dinoArt';
+import { taperedChain, type ChainSegment } from './chainArt';
 
 // Procedural top-down Brontosaurus: body, head, a neck and a tail made of short links (so
 // they bend: the neck toward where the head looks, the tail when walking and whipping),
@@ -35,78 +36,12 @@ const r = (v: number) => Math.round(v * S);
 /** Body canvas size; neck, head and tail segments are separate canvases centered on their joints. */
 export const BRONTO_BODY = r(48);
 
-/** One link of a bendable neck or tail: a capsule from its joint (0) to `len` along +x. */
-export interface ChainSegment {
-  len: number;
-  /** Half-thickness at the joint and at the far end. */
-  w0: number;
-  w1: number;
-}
-
 /** Thick at the shoulders, slimmer behind the head: five links from the shoulder pivot. */
-export const BRONTO_NECK: ChainSegment[] = Array.from({ length: 5 }, (_, i) => {
-  const w = (k: number) => (4.6 - (k / 5) * 2.2) * S;
-  return { len: 7.2, w0: w(i), w1: w(i + 1) };
-});
+export const BRONTO_NECK: ChainSegment[] = taperedChain(5, 7.2, 4.6 * S, 2.4 * S);
 /** From the root (under the hips) to a whip-thin tip: seven links. */
-export const BRONTO_TAIL: ChainSegment[] = Array.from({ length: 7 }, (_, i) => {
-  const w = (k: number) => (0.5 + (1 - k / 7) ** 1.6 * 5.4) * S;
-  return { len: 8, w0: w(i), w1: w(i + 1) };
-});
+export const BRONTO_TAIL: ChainSegment[] = taperedChain(7, 8, 5.9 * S, 0.5 * S, 1.6);
 /** How far the head reaches past the end of the neck (for the mouth position). */
 export const BRONTO_HEAD_LEN = r(11);
-
-/** Shading of a long tapering strip (neck, tail): light along the upper-left edge. */
-function hide(p: DinoPalette, ny: number, x: number, y: number): string {
-  if (ny < -0.55) return p.light;
-  if (ny < -0.2) return checker(x, y) ? p.light : p.base;
-  if (ny > 0.6) return p.dark;
-  if (ny > 0.35) return checker(x, y) ? p.dark : p.base;
-  return p.base;
-}
-
-/**
- * One neck or tail link. Canvas center = its joint. The rounded cap behind the joint has no
- * outline: it sits on top of the previous link's end, so the neck looks like one smooth
- * piece wherever it bends.
- */
-export function drawChainSegment(p: DinoPalette, seg: ChainSegment, band: 'pair' | 'spot'): HTMLCanvasElement {
-  const { len, w0, w1 } = seg;
-  const wMax = Math.max(w0, w1);
-  const W = 2 * Math.ceil(len + wMax + 3);
-  const H = 2 * Math.ceil(wMax + 3);
-  const c = makeCanvas(W, H);
-  const cx = W / 2;
-  const cy = H / 2;
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const lx = x + 0.5 - cx;
-      const ly = y + 0.5 - cy;
-      const t = Math.min(1, Math.max(0, lx / len));
-      const w = w0 + (w1 - w0) * t;
-      if (Math.hypot(lx - t * len, ly) > w) continue;
-      px(c, x, y, hide(p, ly / w, x, y));
-    }
-  }
-  // Darker markings in the middle of the link.
-  const mx = cx + len / 2;
-  if (band === 'pair') {
-    px(c, mx, cy - 2, p.dark);
-    px(c, mx, cy + 1, p.dark);
-    px(c, mx + 1, cy - 1, p.dark);
-  } else if (w0 > 2) px(c, mx, cy - 0.5, p.dark);
-  outline(c, OUTLINE);
-  // Drop the outline around the back cap (it would show as a ring at every joint).
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const lx = x + 0.5 - cx;
-      const ly = y + 0.5 - cy;
-      const d = Math.hypot(lx, ly);
-      if (lx < 0.5 && d > w0 && d <= w0 + 1.8) c.ctx.clearRect(x, y, 1, 1);
-    }
-  }
-  return c.canvas;
-}
 
 /** Small head with a blunt snout. Canvas center = the joint at the end of the neck. */
 export function drawBrontosaurusHead(p: DinoPalette): HTMLCanvasElement {

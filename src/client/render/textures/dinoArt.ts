@@ -1,3 +1,4 @@
+import { taperedChain, type ChainSegment } from './chainArt';
 import { checker, ellipse, line, litShade, makeCanvas, outline, px, rect, type PixCanvas } from './pixel';
 
 // Procedural top-down Triceratops, its rider armor, rider and side cannons. All art faces +x (east);
@@ -97,7 +98,10 @@ const BONE = '#efe4c2';
 const BONE_DARK = '#b5a57c';
 const BEAK = '#3a3430';
 
-/** Body (with legs and tail). `pose` 0/1 alternates the diagonal leg pairs for walking. */
+/** Tail links from the root under the hips (`tail.offset` in dinos.ts) to the tip. */
+export const TRICERATOPS_TAIL: ChainSegment[] = taperedChain(3, 5, 5, 0.6);
+
+/** Body with legs; the tail is drawn as separate links (TRICERATOPS_TAIL). `pose` 0/1 alternates the diagonal leg pairs for walking. */
 export function drawTriceratopsBody(p: DinoPalette, pose: 0 | 1): HTMLCanvasElement {
   const c = makeCanvas(48, 48);
   const cx = 24;
@@ -114,16 +118,6 @@ export function drawTriceratopsBody(p: DinoPalette, pose: 0 | 1): HTMLCanvasElem
     ellipse(c, cx + lx + s, cy + ly, 3.2, 2.6, (nx, ny, x, y) => litShade(nx, ny, x, y, p.dark, p.dark, p.base));
     // toes
     px(c, cx + lx + s + 2.5, cy + ly + (ly < 0 ? -1.5 : 1.5), BONE_DARK);
-  }
-  // Tail tapering to the rear.
-  for (let x = -22; x <= -7; x++) {
-    const t = (x + 22) / 15;
-    const half = 0.6 + t * 4.4;
-    for (let y = -Math.ceil(half); y <= Math.ceil(half); y++) {
-      if (Math.abs(y + 0.5) > half) continue;
-      const ny = (y + 0.5) / half;
-      px(c, cx + x, cy + y, ny < -0.4 ? p.light : ny > 0.5 ? p.dark : p.base);
-    }
   }
   // Torso.
   ellipse(c, cx, cy, 13, 9, (nx, ny, x, y) => litShade(nx, ny, x, y, p.dark, p.base, p.light));

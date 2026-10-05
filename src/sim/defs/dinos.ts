@@ -24,6 +24,8 @@ const DINOS: Record<string, DinoDef> = {
     hp: 100,
     wadeSpeed: 0.7,
     head: { offset: { x: 11, y: 0 }, maxYaw: 25 * DEG, yawSpeed: 2.8 },
+    // The tail is drawn as links that bend from here (client/render/chains.ts).
+    tail: { offset: { x: -7, y: 0 } },
     // Right mouse: a short charge straight ahead that rams everything in the way.
     ability: { kind: 'dash', cooldown: 15, duration: 0.4, speed: 260, damage: 20, hitReach: 4 },
     // Two cannons hang from the armored saddle, one on each flank, and fire together.
@@ -71,6 +73,7 @@ const DINOS: Record<string, DinoDef> = {
     // Small: deep water slows it down the most.
     wadeSpeed: 0.4,
     head: { offset: { x: 7, y: 0 }, maxYaw: 15 * DEG, yawSpeed: 4 },
+    tail: { offset: { x: -5, y: 0 } },
     // Right mouse: a leap toward the cursor (over rocks too) that slams down on whoever is below.
     ability: { kind: 'leap', cooldown: 15, duration: 0.45, minRange: 30, maxRange: 110, damage: 18, hitReach: 8 },
     // Two small guns hang from the metal saddle, one on each flank, and fire together.

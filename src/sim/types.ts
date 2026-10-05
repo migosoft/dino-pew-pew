@@ -92,7 +92,7 @@ export interface AbilityDef {
   knockback?: number;
 }
 
-/** A tail drawn as its own part (it swings during a whip). */
+/** A tail drawn as its own bendable links (it trails behind turns, sways and whips). Visual, plus the whip origin. */
 export interface TailDef {
   /** Tail root in body-local space (x = forward, so negative = behind). */
   offset: Vec2;

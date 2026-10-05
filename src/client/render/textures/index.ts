@@ -29,7 +29,9 @@ import {
 import { WAVE_VARIANTS, drawDroplet, drawFish, drawFoamRing, drawRipple, drawWave } from './waterArt';
 import { FONT_CHARS, FONT_H, FONT_W, drawFont } from './font';
 import { drawRaptorBody, drawRaptorHead, drawRaptorHeadArmor, drawRaptorSaddleArmor, drawRaptorSideGun } from './raptorArt';
-import { BRONTO_NECK, BRONTO_TAIL, drawBroadsideGun, drawBrontosaurusBody, drawBrontosaurusHead, drawBrontosaurusPlatform, drawChainSegment, drawTailGun } from './brontosaurusArt';
+import { drawBroadsideGun, drawBrontosaurusBody, drawBrontosaurusHead, drawBrontosaurusPlatform, drawTailGun } from './brontosaurusArt';
+import { drawChainSegment } from './chainArt';
+import { CHAINS } from '../chains';
 import { BUSH_VARIANTS, CARCASS_KINDS, FERN_VARIANTS, drawBush, drawCarcass, drawFernPatch, type FoodStage } from './foodArt';
 
 /** Rotation frames for parts that turn (bodies, heads, weapons). */
@@ -55,45 +57,40 @@ export function generateTextures(scene: Phaser.Scene): void {
   // Per-team textures are keyed by palette: "t0".."t3", plus "wild" (see client/teams.ts).
   [...TEAM_PALETTES, WILD_PALETTE].forEach((pal, slot) => {
     const key = slot < TEAM_PALETTES.length ? `t${slot}` : 'wild';
-    for (const pose of [0, 1] as const) {
-      const body = drawTriceratopsBody(pal, pose);
-      addStrip(scene, `triceratops_body_${key}_${pose}`, body, DIRS);
-      if (slot === 0) addStrip(scene, `triceratops_shadow_${pose}`, silhouette(body, 'rgba(0,0,0,0.32)'), DIRS);
-    }
-    addStrip(scene, `triceratops_head_${key}`, drawTriceratopsHead(pal), DIRS);
+    // Tails (and the Brontosaurus neck) are chains of links that bend (client/render/chains.ts).
+    // Chained species have no ready-made shadow: opaque masks of body, head and links are
+    // stamped into one texture per dino, so the shadow bends too and overlaps don't darken it.
+    const mask = (src: HTMLCanvasElement) => silhouette(src, '#000000');
+    const bodyAndHead = (kind: string, body: (pose: 0 | 1) => HTMLCanvasElement, head: HTMLCanvasElement) => {
+      for (const pose of [0, 1] as const) {
+        const canvas = body(pose);
+        addStrip(scene, `${kind}_body_${key}_${pose}`, canvas, DIRS);
+        if (slot === 0) addStrip(scene, `${kind}_bodyMask_${pose}`, mask(canvas), DIRS);
+      }
+      addStrip(scene, `${kind}_head_${key}`, head, DIRS);
+      if (slot === 0) addStrip(scene, `${kind}_head_mask`, mask(head), DIRS);
+    };
+    bodyAndHead('triceratops', (pose) => drawTriceratopsBody(pal, pose), drawTriceratopsHead(pal));
     // Rider armor (only ridden dinos wear it, so no wild variant). DinoView picks up
     // `<kind>_armor_<palette>` (body) and `<kind>_headArmor_<palette>` whenever they exist.
     if (key !== 'wild') {
       addStrip(scene, `triceratops_armor_${key}`, drawTriceratopsSaddleArmor(pal), DIRS);
       addStrip(scene, `triceratops_headArmor_${key}`, drawTriceratopsHeadArmor(pal), DIRS);
     }
-    for (const pose of [0, 1] as const) {
-      const body = drawRaptorBody(pal, pose);
-      addStrip(scene, `velociraptor_body_${key}_${pose}`, body, DIRS);
-      if (slot === 0) addStrip(scene, `velociraptor_shadow_${pose}`, silhouette(body, 'rgba(0,0,0,0.32)'), DIRS);
-    }
-    addStrip(scene, `velociraptor_head_${key}`, drawRaptorHead(pal), DIRS);
+    bodyAndHead('velociraptor', (pose) => drawRaptorBody(pal, pose), drawRaptorHead(pal));
     if (key !== 'wild') {
       addStrip(scene, `velociraptor_armor_${key}`, drawRaptorSaddleArmor(pal), DIRS);
       addStrip(scene, `velociraptor_headArmor_${key}`, drawRaptorHeadArmor(pal), DIRS);
     }
-    // Neck and tail are chains of links that bend (client/render/chains.ts). Shadows are
-    // stamped from opaque masks into one texture per dino, so overlapping links don't darken it.
-    const mask = (src: HTMLCanvasElement) => silhouette(src, '#000000');
-    for (const pose of [0, 1] as const) {
-      const body = drawBrontosaurusBody(pal, pose);
-      addStrip(scene, `brontosaurus_body_${key}_${pose}`, body, DIRS);
-      if (slot === 0) addStrip(scene, `brontosaurus_bodyMask_${pose}`, mask(body), DIRS);
-    }
-    const head = drawBrontosaurusHead(pal);
-    addStrip(scene, `brontosaurus_head_${key}`, head, DIRS);
-    if (slot === 0) addStrip(scene, `brontosaurus_head_mask`, mask(head), DIRS);
-    for (const [part, segs, band] of [['neck', BRONTO_NECK, 'pair'], ['tail', BRONTO_TAIL, 'spot']] as const) {
-      segs.forEach((seg, i) => {
-        const link = drawChainSegment(pal, seg, band);
-        addStrip(scene, `brontosaurus_${part}${i}_${key}`, link, DIRS);
-        if (slot === 0) addStrip(scene, `brontosaurus_${part}${i}_mask`, mask(link), DIRS);
-      });
+    bodyAndHead('brontosaurus', (pose) => drawBrontosaurusBody(pal, pose), drawBrontosaurusHead(pal));
+    for (const [kind, spec] of Object.entries(CHAINS)) {
+      for (const [part, chain] of [['neck', spec.neck], ['tail', spec.tail]] as const) {
+        chain?.segs.forEach((seg, i) => {
+          const link = drawChainSegment(pal, seg, chain.style);
+          addStrip(scene, `${kind}_${part}${i}_${key}`, link, DIRS);
+          if (slot === 0) addStrip(scene, `${kind}_${part}${i}_mask`, mask(link), DIRS);
+        });
+      }
     }
     if (key !== 'wild') addStrip(scene, `brontosaurus_armor_${key}`, drawBrontosaurusPlatform(pal), DIRS);
     addStrip(scene, `rider_${key}`, drawRider(pal), DIRS);
