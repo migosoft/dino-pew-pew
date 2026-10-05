@@ -170,13 +170,15 @@ export class GameScene extends Phaser.Scene {
 
   private syncDinoViews(dinos: Dino[]): void {
     const teams = this.net.mirror.teams();
+    const view = this.cameras.main.worldView;
+    const now = performance.now();
     const seen = new Set<number>();
     for (const d of dinos) {
       seen.add(d.id);
       const v = this.dinoViews.get(d.id);
       const wading = wadingOf(this.world!, d);
-      if (v) v.update(d, wading);
-      else this.dinoViews.set(d.id, new DinoView(this, d, paletteKey(d.team, teams))).get(d.id)!.update(d, wading);
+      if (v) v.update(d, wading, view, now);
+      else this.dinoViews.set(d.id, new DinoView(this, d, paletteKey(d.team, teams))).get(d.id)!.update(d, wading, view, now);
     }
     for (const [id, v] of this.dinoViews) {
       if (seen.has(id)) continue;

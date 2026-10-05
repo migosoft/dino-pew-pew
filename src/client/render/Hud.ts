@@ -40,6 +40,8 @@ export class Hud {
   private board: Phaser.GameObjects.BitmapText;
   private feed: { text: Phaser.GameObjects.BitmapText; born: number }[] = [];
   private tags: Phaser.GameObjects.BitmapText[] = [];
+  private names = new Map<number, string>();
+  private namesOf: PlayerInfo[] | null = null;
   private arrows: Phaser.GameObjects.Image[] = [];
   private baseArrow: Phaser.GameObjects.Image;
   private tab: Phaser.Input.Keyboard.Key;
@@ -149,21 +151,28 @@ export class Hud {
   private worldOverlay(m: HudModel): void {
     const w = this.world;
     w.clear();
+    // Players by id, rebuilt only when a snapshot brings a new list.
+    if (m.players !== this.namesOf) {
+      this.namesOf = m.players;
+      this.names.clear();
+      for (const p of m.players) this.names.set(p.id, p.name);
+    }
+    const view = this.scene.cameras.main.worldView;
     let tagIdx = 0;
     for (const e of m.dinos) {
       if (e.id === m.myDino?.id) continue;
+      if (e.x < view.x - 40 || e.x > view.right + 40 || e.y < view.y - 40 || e.y > view.bottom + 80) continue;
       const r = getDino(e.kind).radius;
       const x = Math.round(e.x);
       const top = Math.round(e.y - r - 8);
-      const color = teamColor(e.team, m.teams);
       if (e.hp < e.maxHp) {
         w.fillStyle(0x17110d, 1).fillRect(x - 9, top - 1, 18, 4);
         w.fillStyle(e.team === m.me?.team ? 0x6fcf4a : 0xe0503c, 1).fillRect(x - 8, top, Math.round(16 * (e.hp / e.maxHp)), 2);
       }
       if (e.playerId !== null) {
-        const p = m.players.find((pl) => pl.id === e.playerId);
+        const color = teamColor(e.team, m.teams);
         if (!this.tags[tagIdx]) this.tags[tagIdx] = this.scene.add.bitmapText(0, 0, FONT_KEY, '').setOrigin(0.5, 1).setDepth(DEPTH.overlay);
-        this.tags[tagIdx++].setText(p?.name ?? '').setTint(color).setPosition(x, top - 2).setVisible(true);
+        this.tags[tagIdx++].setText(this.names.get(e.playerId) ?? '').setTint(color).setPosition(x, top - 2).setVisible(true);
       }
     }
     for (let i = tagIdx; i < this.tags.length; i++) this.tags[i].setVisible(false);

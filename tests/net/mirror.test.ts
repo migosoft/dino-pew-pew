@@ -41,6 +41,18 @@ describe('client mirror', () => {
     }
   });
 
+  it('gives the same result for a tick however often and in whatever order it is asked', () => {
+    const { mirror } = simulate(120);
+    const at = (tick: number) => {
+      const d = mirror.dinosAt(tick)[0];
+      return { x: d.x, y: d.y, heading: d.heading, mounts: d.mounts.map((m) => m.angle) };
+    };
+    const first = at(101.5);
+    at(100);
+    at(104.5);
+    expect(at(101.5)).toEqual(first);
+  });
+
   it('spawns projectiles from shot events and moves them like the server', () => {
     const { s, mirror } = simulate(90);
     mirror.takeEvents(s.tick);

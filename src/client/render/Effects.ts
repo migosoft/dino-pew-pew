@@ -1,10 +1,15 @@
 import Phaser from 'phaser';
 import { DEPTH } from './depth';
 
+/** Scorch marks stay on the ground; past this many the oldest is reused. */
+const MAX_SCORCHES = 64;
+
 /** Short-lived visual feedback: muzzle flashes, sparks, dust and scorch marks. */
 export class Effects {
   private sparks: Phaser.GameObjects.Particles.ParticleEmitter;
   private dust: Phaser.GameObjects.Particles.ParticleEmitter;
+  private scorches: Phaser.GameObjects.Image[] = [];
+  private nextScorch = 0;
 
   constructor(private scene: Phaser.Scene) {
     this.sparks = scene.add
@@ -82,10 +87,19 @@ export class Effects {
     this.sparks.explode(8, x, y);
   }
 
+  private scorch(x: number, y: number): void {
+    if (this.scorches.length < MAX_SCORCHES) {
+      this.scorches.push(this.scene.add.image(x, y, 'scorch').setDepth(DEPTH.decal));
+      return;
+    }
+    this.scorches[this.nextScorch].setPosition(x, y);
+    this.nextScorch = (this.nextScorch + 1) % MAX_SCORCHES;
+  }
+
   death(x: number, y: number): void {
     this.sparks.explode(18, x, y);
     this.dust.explode(14, x, y);
-    this.scene.add.image(Math.round(x), Math.round(y), 'scorch').setDepth(DEPTH.decal);
+    this.scorch(Math.round(x), Math.round(y));
     const cam = this.scene.cameras.main;
     if (cam.worldView.contains(x, y)) cam.shake(120, 0.004);
   }

@@ -87,7 +87,9 @@ export class WorldView {
     for (const c of this.canopies) {
       const under = player !== undefined && (player.x - c.x) ** 2 + (player.y - c.y) ** 2 < (c.r + 6) ** 2;
       const target = under ? 0.35 : 1;
-      c.sprite.alpha += (target - c.sprite.alpha) * 0.2;
+      const diff = target - c.sprite.alpha;
+      if (diff === 0) continue;
+      c.sprite.alpha = Math.abs(diff) < 0.01 ? target : c.sprite.alpha + diff * 0.2;
     }
   }
 
