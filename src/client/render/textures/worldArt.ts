@@ -140,6 +140,11 @@ function hexToRgb(h: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
+/** Ground chunk size in px. */
+export const CHUNK = 256;
+/** Ground details stay this far from the chunk edge: the widest one (a mud puddle) reaches about 7 px. */
+const DETAIL_INSET = 8;
+
 const isWet = (t: number) => t === Tile.Shallow || t === Tile.Deep;
 
 /**
@@ -192,11 +197,11 @@ export function drawGroundChunk(world: World, x0: number, y0: number, w: number,
   c.ctx.putImageData(img, 0, 0);
 
   // Ground details: grass tufts, ferns, pebbles, puddles, bones, stones on the river bed.
-  const rnd = seededRandom((seed * 7 + 1) ^ Math.imul(Math.floor(x0 / 256) + 1, 73856093) ^ Math.imul(Math.floor(y0 / 256) + 1, 19349663));
+  const rnd = seededRandom((seed * 7 + 1) ^ Math.imul(Math.floor(x0 / CHUNK) + 1, 73856093) ^ Math.imul(Math.floor(y0 / CHUNK) + 1, 19349663));
   const count = Math.floor((w * h) / 260);
   for (let k = 0; k < count; k++) {
-    const x = x0 + 2 + Math.floor(rnd() * (w - 4));
-    const y = y0 + 2 + Math.floor(rnd() * (h - 4));
+    const x = x0 + DETAIL_INSET + Math.floor(rnd() * (w - DETAIL_INSET * 2));
+    const y = y0 + DETAIL_INSET + Math.floor(rnd() * (h - DETAIL_INSET * 2));
     const t = at(x, y);
     const roll = rnd();
     // Keep land details off the shoreline.

@@ -1,10 +1,8 @@
 import Phaser from 'phaser';
 import type { World } from '../../sim/types';
-import { drawGroundChunk } from './textures/worldArt';
+import { CHUNK, drawGroundChunk } from './textures/worldArt';
 import { DEPTH } from './depth';
 
-/** Ground chunk size in px: one takes about 10 ms to draw. */
-export const CHUNK = 256;
 /** Time per frame for drawing chunks ahead of the camera (chunks under the camera are always drawn at once). */
 const FRAME_BUDGET_MS = 6;
 /** Chunks this far outside the view (in chunks) are dropped. */

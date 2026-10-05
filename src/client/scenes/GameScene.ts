@@ -56,6 +56,9 @@ export class GameScene extends Phaser.Scene {
   private lastInput = 0;
   private leaving = false;
   private restarting = false;
+  /** True once followCamera has scrolled the camera to a target (until then it sits at the origin). */
+  private camPlaced = false;
+  private view = new Phaser.Geom.Rectangle();
 
   constructor() {
     super('game');
@@ -69,6 +72,7 @@ export class GameScene extends Phaser.Scene {
     this.spectate = null;
     this.camX = 0;
     this.camY = 0;
+    this.camPlaced = false;
   }
 
   create(data: { join?: JoinRequest; net?: NetClient }): void {
@@ -184,9 +188,16 @@ export class GameScene extends Phaser.Scene {
       this.spectate = null;
       this.followCamera(myDino ?? myBase);
     }
-    // After followCamera, so the view is current.
-    this.worldView.update(myDino, this.cameras.main.worldView);
-    this.foodView.cull(this.cameras.main.worldView);
+    // Cull by where the camera is now scrolled to: cameras.main.worldView only catches up in the camera's own render step, a frame late.
+    if (this.camPlaced) {
+      const cam = this.cameras.main;
+      const vw = cam.width / cam.zoom;
+      const vh = cam.height / cam.zoom;
+      // The camera clamps its scroll to the world bounds when it renders.
+      this.view.setTo(clamp(Math.round(this.camX), 0, Math.max(0, this.world.width - vw)), clamp(Math.round(this.camY), 0, Math.max(0, this.world.height - vh)), vw, vh);
+      this.worldView.update(myDino, this.view);
+      this.foodView.cull(this.view);
+    }
 
     const cam = this.cameras.main;
     const ptr = this.input.activePointer;
@@ -297,6 +308,7 @@ export class GameScene extends Phaser.Scene {
     this.camX += (tx - this.camX) * 0.12;
     this.camY += (ty - this.camY) * 0.12;
     cam.setScroll(Math.round(this.camX), Math.round(this.camY));
+    this.camPlaced = true;
   }
 
   private leave(message: string): void {

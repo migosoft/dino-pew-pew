@@ -4,13 +4,9 @@ import { BASE_RADIUS } from '../../sim/players';
 import type { TeamInfo } from '../../net/protocol';
 import { TEAM_COLORS } from '../teams';
 import { CANOPY_SIZES, ROCK_SIZES, nearestSize } from './textures/worldArt';
+import { BucketGrid } from './BucketGrid';
 import { GroundChunks } from './GroundChunks';
 import { DEPTH } from './depth';
-
-/** Obstacle sprites are shown or hidden in buckets of this many px. */
-const BUCKET = 512;
-/** Buckets this close to the view (px) count as visible. */
-const BUCKET_MARGIN = 64;
 
 /** Canopies sit above the trunk; this lift fakes height in the top-down view. */
 const CANOPY_LIFT = 10;
@@ -22,19 +18,20 @@ interface Canopy {
   r: number;
 }
 
+interface ObstacleBucket {
+  images: Phaser.GameObjects.Image[];
+  canopies: Canopy[];
+}
+
 export class WorldView {
   private ground: GroundChunks;
-  private readonly bucketCols: number;
-  private readonly bucketRows: number;
-  private buckets = new Map<number, { images: Phaser.GameObjects.Image[]; canopies: Canopy[] }>();
-  private visible = new Set<number>();
+  private buckets: BucketGrid<ObstacleBucket>;
   /** Claimed base camps: slot -> team id + decoration objects. */
   private camps = new Map<number, { team: string; objects: Phaser.GameObjects.GameObject[] }>();
 
   constructor(private scene: Phaser.Scene, world: World) {
     this.ground = new GroundChunks(scene, world);
-    this.bucketCols = Math.ceil(world.width / BUCKET);
-    this.bucketRows = Math.ceil(world.height / BUCKET);
+    this.buckets = new BucketGrid(world.width, world.height);
     for (const o of world.obstacles) this.addObstacle(o);
     // Every campsite has a ring of marker stones; claimed ones get team totems (updateBases).
     for (const b of world.bases) {
@@ -75,18 +72,9 @@ export class WorldView {
     }
   }
 
-  private bucketOf(x: number, y: number): { images: Phaser.GameObjects.Image[]; canopies: Canopy[] } {
-    const bx = Math.min(this.bucketCols - 1, Math.max(0, Math.floor(x / BUCKET)));
-    const by = Math.min(this.bucketRows - 1, Math.max(0, Math.floor(y / BUCKET)));
-    const key = by * this.bucketCols + bx;
-    let b = this.buckets.get(key);
-    if (!b) this.buckets.set(key, (b = { images: [], canopies: [] }));
-    return b;
-  }
-
   private addObstacle(o: Obstacle): void {
     const s = this.scene;
-    const bucket = this.bucketOf(o.x, o.y);
+    const bucket = this.buckets.at(o.x, o.y, () => ({ images: [], canopies: [] }));
     if (o.kind === 'rock') {
       const size = nearestSize(ROCK_SIZES, o.r);
       bucket.images.push(s.add.image(o.x + 3, o.y + 3, 'shadow').setDisplaySize(size * 2.4, size * 1.4).setDepth(DEPTH.shadow).setVisible(false));
@@ -105,18 +93,14 @@ export class WorldView {
   /** Draw the ground around the view, show only the obstacles near it, and fade canopies the player walks under. */
   update(player: Vec2 | undefined, view: Phaser.Geom.Rectangle): void {
     this.ground.update(view);
-    const bx0 = Math.max(0, Math.floor((view.x - BUCKET_MARGIN) / BUCKET));
-    const bx1 = Math.min(this.bucketCols - 1, Math.floor((view.right + BUCKET_MARGIN) / BUCKET));
-    const by0 = Math.max(0, Math.floor((view.y - BUCKET_MARGIN) / BUCKET));
-    const by1 = Math.min(this.bucketRows - 1, Math.floor((view.bottom + BUCKET_MARGIN) / BUCKET));
-    const now = new Set<number>();
-    for (let by = by0; by <= by1; by++) for (let bx = bx0; bx <= bx1; bx++) now.add(by * this.bucketCols + bx);
-    for (const k of this.visible) if (!now.has(k)) for (const img of this.buckets.get(k)?.images ?? []) img.setVisible(false);
-    for (const k of now) if (!this.visible.has(k)) for (const img of this.buckets.get(k)?.images ?? []) img.setVisible(true);
-    this.visible = now;
+    this.buckets.update(
+      view,
+      (b) => b.images.forEach((img) => img.setVisible(true)),
+      (b) => b.images.forEach((img) => img.setVisible(false)),
+    );
     // Canopies go see-through when the player walks underneath.
-    for (const k of now) {
-      for (const c of this.buckets.get(k)?.canopies ?? []) {
+    for (const bucket of this.buckets.visibleBuckets()) {
+      for (const c of bucket.canopies) {
         const under = player !== undefined && (player.x - c.x) ** 2 + (player.y - c.y) ** 2 < (c.r + 6) ** 2;
         const target = under ? 0.35 : 1;
         const diff = target - c.sprite.alpha;
