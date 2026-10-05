@@ -1,10 +1,10 @@
 # Dinoriders: Handoff
 
-**Status (2026-10-05, end of session):** every requested feature is implemented. All 97 tests pass, and the type-check and build are clean. Everything is committed on `master`, and the working tree is clean. Nothing has been pushed.
-- Phase 7 and its follow-ups have been checked in a browser: the 3072 px map with lakes and rivers, wading, the playable Brontosaurus (weapons platform, tail whip, 1.5× size, bending neck and tail), living water, and bending, trailing tails on all three species.
+**Status (2026-10-05, end of session):** every requested feature is implemented. All 112 tests pass, and the type-check and build are clean. Everything is committed on `master`, and the working tree is clean. Nothing has been pushed.
+- Phase 8 has been checked in a browser: the 4096 px map, river currents (a raptor swept downstream and crawling, the streaks), and the playable T-Rex (four guns, bite, HUD cooldown, slowed in a deep river).
 - The Docker image on :8080 has **not** been rebuilt since Phase 6. Run `docker compose up --build -d` when the user wants it.
 
-See [Latest session](#latest-session-phase-7-and-follow-ups).
+See [Latest session](#latest-session-phase-8).
 
 This document gives the state of the project, how it fits together, and what to watch out for. For how to play and run it, see [README.md](../README.md). The design history is in [docs/superpowers/specs/](superpowers/specs/).
 
@@ -12,7 +12,7 @@ This document gives the state of the project, how it fits together, and what to 
 A top-down pixel-art multiplayer shooter. Players ride armed dinosaurs in one persistent world that never ends.
 - Opening the URL shows a join screen: join an existing team or found a new one (up to 4 teams), then pick a mount.
 - Each team has a base camp. You respawn there, nobody can hurt you inside it, and its shop is there.
-- Riderless **wild dinosaurs** (Triceratops, Velociraptor and Brontosaurus) roam the world. They are a threat, a source of money, and they leave carcasses that carnivores eat.
+- Riderless **wild dinosaurs** (Triceratops, Velociraptor, Brontosaurus and T-Rex) roam the world. They are a threat, a source of money, and they leave carcasses that carnivores eat.
 - **Diets:** standing still next to the right food heals you.
   - Herbivores eat bushes and ferns; only large herbivores also eat trees.
   - Carnivores eat carcasses.
@@ -33,9 +33,75 @@ A top-down pixel-art multiplayer shooter. Players ride armed dinosaurs in one pe
 | `a3fb0c0` | 7: 3072 px map, lakes and rivers, wading, Brontosaurus with weapons platform and tail whip, living water |
 | `01beb93` | 7a: Brontosaurus 1.5× bigger (`BRONTO_SCALE`), obstacle gap 48 px |
 | `a4cc299` | 7b: Brontosaurus neck and tail bend (chained links), stamped shadow that follows |
-| `fef0130` (latest) | 7c: chained, trailing tails for Triceratops and Velociraptor too |
+| `fef0130` | 7c: chained, trailing tails for Triceratops and Velociraptor too |
+| `fde6dfe` | 8a: 4096 px map, larger wild population, raptor `wadeSpeed` 0.25 |
+| `8f04025` | 8b: river currents in the sim (flow field, `currentSlow`, `currentDrift`) |
+| `e4cbfa6` | 8c: river visuals (streaks downstream, drifting ripples, fish only in lakes) |
+| `e2c128c` | 8d: T-Rex sim (head and shoulder guns, bite ability, wild carnivore) |
+| `eb9d41e` | 8e: T-Rex art, bite animation and effect, carcass |
+| (latest) | README and handoff for Phase 8 |
 
-## Latest session: phase 7 and follow-ups
+## Latest session: phase 8
+**What was done** (the user supplied a Dino Riders T-Rex image, the cover of a French *Pif* magazine):
+1. **Map 4096 px** (`DEFAULT_TILES = 256`). It is still one ground texture: 4096 is the safe single-texture limit, so going bigger needs the ground split into chunk textures (`WorldView`/`drawGround`).
+   - `generateWorld` takes about 120–170 ms in Node (it was about 100 ms at 3072 px).
+   - `wildTarget` is now `min(110, 28 + 5·players)`.
+2. **Velociraptor `wadeSpeed` 0.25** (it was 0.4).
+3. **River currents** (sim):
+   - `waterLayer` (`worldgen.ts`) also returns a flow field, `World.flow`: a `Float32Array` holding (vx, vy) per tile in px/s, `null` with `water: false`.
+     - **Direction:** the river noise gradient turned 90°. A river is the 0.5 contour of that noise, so each river flows one way along its whole length.
+     - **Speed:** `RIVER_SPEED` (36 px/s) in the middle of the channel. It fades toward the banks and drops to 60% over fords.
+     - **No current** in lakes (where a river meets a lake, the lake wins) or within `BASE_DRY` of a camp. Rivers cover about 12% of the map.
+   - **Lookups** in `world.ts`: `flowAt` and `isRiver` use `tileIndexAt` (the same wobbled borders as `tileAt`).
+   - **Per-species fields on `DinoDef`:**
+     - `currentSlow`: the top-speed factor in a river (default 0.75). Triceratops and Brontosaurus 1, T-Rex 0.8, raptor 0.6.
+     - `currentDrift`: the share of the flow added to the position each tick (default 0). Raptor 0.8.
+   - **Movement:** `terrainSpeedFactor` multiplies the wade factor by the current factor, so the dash and the bite lunge slow down in rivers too. `applyCurrent` (`movement.ts`) runs every tick in `sim.ts` and is skipped mid-leap.
+   - **AI and spawning:** calm wild dinos with `currentDrift` (raptors) steer around rivers (`clearHeading`). Wild dinos never spawn in rivers. In a 2-minute headless run, wild raptors spent 0.1% of their time in rivers.
+4. **River visuals** (`WaterView.ts`):
+   - Wave points in a river become **streaks** (`current_<v>_<deep|shallow>`, `drawCurrentStreak` in `waterArt.ts`). Each one runs `STREAK_RUN` px downstream at 1.3× the current, fades in and out, then starts over. A streak that would run onto the bank isn't drawn.
+   - Ripples drift with the current.
+   - Fish live only in still deep water (lakes).
+5. **T-Rex** (`trex` in `dinos.ts`):
+   - **Stats:** carnivore, radius 15, 170 HP, speed 66, bounty 35, `wadeSpeed` 0.75.
+   - **Size:** its art is about 55% as long as the Brontosaurus's (real animals: 12 m vs 22 m).
+   - **Guns:**
+     - `headGunL`/`headGunR`: parent `head`, at (4, ±8), the two ends of the barrel across the head harness. Weapon `rexHeadGun`: 4 damage every 0.22 s.
+     - `shoulderGunL`/`shoulderGunR`: parent `body`, at (4, ±13). Weapon `rexShoulderCannon`: 8 damage every 0.45 s.
+     - Default fire mode: each gun fires when it is on target.
+   - **Bite** (`kind: 'bite'` in `abilities.ts`):
+     - For the first half of its 0.35 s it lunges forward at 140 px/s (scaled by the terrain) and controls the movement.
+     - At the half-way point the jaws close on the **one** nearest hostile in front (±35°, within `head.offset.x` + its radius + `hitReach` 14): 55 damage and a 10 px shove. Dinos in their own camp and airborne dinos are exempt.
+     - It emits a `bite` event `{ dinoId, targetId | null, x, y }`. Events go to the client as JSON, so the protocol needed no change.
+     - Wild T-Rexes bite targets they hunt (`wantsAbility`, `BITE_ABILITY_ARC`).
+   - **Wild:** 1 in 4 wild carnivores (`CARNIVORES` in `ecology.ts`), and about 12% of the initial carcasses.
+   - **Art** (`textures/trexArt.ts`), following the box art:
+     - mottled hide, red eyes;
+     - head harness with the barrel across the head and a red power cell;
+     - vented grey shoulder frames carrying red cannon pods;
+     - a chest platform with a ladder, shin plates, and the saddle on the neck (`seat` (9, 0)).
+     - The tail is `REX_TAIL` (6 links) in `CHAINS`, so it bends and trails, and the shadow is stamped from masks.
+   - **Bite animation:** the head pushes forward up to `BITE_REACH` (5 px) and shows the open-jaw frame `trex_headBite_<palette>` (`DinoView`). `Effects.bite` shows sparks and blood that fade out, or dust on a miss. The camera shakes when you are the one bitten.
+   - **Elsewhere:** the HUD shows `BITE READY`/`BITE IN 12`; the join screen lists it as `T-REX`; `drawTrexCarcass` is in `foodArt.ts`.
+6. **Tests:**
+   - `tests/sim/river.test.ts` covers the flow field (deterministic, only in rivers, one way along a river), drift and slowdown per species, and no drift mid-leap.
+   - `tests/sim/trex.test.ts` covers the guns, the bite (single target, front only, cooldown, camp immunity), water and river speed, and wild spawning.
+   - The vitest `testTimeout` is now 20 s (`vite.config.ts`), because several tests generate the full 4096 px map more than once. The suite runs in 3 s on an idle machine and 13 s or more under load.
+7. **Verification:**
+   - Art at `/?preview=trex`, compared at the same zoom with `/?preview=brontosaurus`.
+   - In the game over CDP (driver in the session scratchpad, not committed), seed 777:
+     - A raptor idling in a 25–30 px/s current drifted at 21–24 px/s, and at full throttle in a deep river made 17.7 px/s (118 × 0.25 × 0.6).
+     - A T-Rex in a deep river made about 41 px/s, against an expected 39.6.
+     - All four guns fired; the bite splashed and the HUD went to `BITE IN 15`.
+   - **Frame rate:** headless Edge showed 38–45 fps here, about the same as the previous commit measured the same way (36–54). The machine was under load, so this is not a 60 fps figure. The water rendering takes under 1 ms per frame.
+
+**Balance knobs (phase 8):**
+- `RIVER_SPEED` and the river widths (`RIVER_DEEP`, `RIVER_WIDE`) in `worldgen.ts`.
+- `currentSlow`, `currentDrift` and `wadeSpeed` per species.
+- The T-Rex `ability`, plus the `rexHeadGun` and `rexShoulderCannon` weapons.
+- `CARNIVORES` (T-Rex share) and `wildTarget` in `ecology.ts`.
+
+## Phase 7 and follow-ups
 **What was done** (the user supplied a Dino Riders box image of an armored Brontosaurus). Phase 7 is described first, then the follow-ups (7a–7c) in item 8.
 1. **Bigger map with water.**
    - The default map is now 192×192 tiles = **3072 px** (`DEFAULT_TILES` in `worldgen.ts`). Base camps sit at about 1/8 of the map from the edge (`baseInset`, at least 260 px, so small test maps are unchanged).
@@ -93,7 +159,7 @@ A top-down pixel-art multiplayer shooter. Players ride armed dinosaurs in one pe
 - The Brontosaurus `ability` and `broadsideGun`/`tailGun` values.
 - `wildTarget` in `ecology.ts` (now `min(70, 18 + 4·players)`).
 
-## Phase 6 (previous session)
+## Phase 6
 **What was done** (based on a second Dino Riders box image the user supplied: a Deinonychus ridden by Antor):
 1. **Armored Velociraptor.**
    - Ridden raptors wear a small riveted metal saddle with team-color trim and struts to both flanks (`drawRaptorSaddleArmor`), plus a silver face mask with a grille (`drawRaptorHeadArmor`). Wild raptors are unarmored.
@@ -177,8 +243,9 @@ tests/       vitest: sim/, net/, server/ (the server tests open real WebSockets 
 | Add or tune a species | `src/sim/defs/dinos.ts`, `src/sim/defs/weapons.ts`. Sprites go in `src/client/render/textures/` and are registered in `textures/index.ts` under the keys `<kind>_body_<palette>_<pose>`, `<kind>_shadow_<pose>`, `<kind>_head_<palette>`, where palette is `t0`..`t3` or `wild`. A species in `CHAINS` uses masks instead of `_shadow_` (see the next row). The `bodyAndHead` helper in `textures/index.ts` registers body, head and masks together. Also add the species to the `HERBIVORES`/`CARNIVORES` lists in `ecology.ts` and to `CARCASS_KINDS`/`drawCarcass` in `foodArt.ts` (`FoodView` falls back to Triceratops art). |
 | Give a species a bending tail or neck | Set `tail` (and `head`) offsets in `dinos.ts`. Define its links with `taperedChain` next to its art, add it to `CHAINS` in `src/client/render/chains.ts` (link textures and masks then register automatically), and leave the tail out of the body sprite. Tune the motion with `TRAIL_RATE`, `TAIL_SWAY`, `SWAY_WAVE`, `WHIP_*` in `DinoView.ts`. |
 | Give a species rider armor | Register `<kind>_armor_<palette>` (body overlay) and/or `<kind>_headArmor_<palette>` (head overlay) for `t0`..`t3` in `textures/index.ts`. `DinoView` shows them on ridden dinos whenever the textures exist. The Triceratops versions are in `dinoArt.ts`. Open `/?preview` (or `/?preview=velociraptor&zoom=3&focus=row,col`) to see every palette and heading. |
-| Give a species an ability | `ability` on the `DinoDef` (`kind: 'leap' \| 'dash' \| 'whip'`). The logic is in `src/sim/systems/abilities.ts`, wild use in `wantsAbility`/`wantsWhip` (`ai.ts`), and the leap and whip rendering in `DinoView`. A new kind needs a branch in `updateAbility`. |
+| Give a species an ability | `ability` on the `DinoDef` (`kind: 'leap' \| 'dash' \| 'whip' \| 'bite'`). The logic is in `src/sim/systems/abilities.ts`, wild use in `wantsAbility`/`wantsWhip` (`ai.ts`), and the leap and whip rendering in `DinoView`. A new kind needs a branch in `updateAbility`. |
 | Fire all guns at once | `volley: true` on the `DinoDef` (used by both species' twin side guns). `fireMode: 'side'` (Brontosaurus) fires every mount whose arc holds the cursor (`selectSideMounts`). Without either, only the mounts that are on target fire (`selectFiringMounts`). |
+| Tune river currents | `RIVER_SPEED`, `RIVER_DEEP`, `RIVER_WIDE` and the flow computation in `waterLayer` (`worldgen.ts`). The lookups are `flowAt` and `isRiver` (`world.ts`). Per species: `currentSlow` and `currentDrift`, applied in `terrainSpeedFactor` and `applyCurrent` (`movement.ts`). Streak visuals: `drawStreak` in `WaterView.ts`. |
 | Tune water and terrain | `waterLayer`, `OBSTACLE_GAP` and `DEFAULT_TILES` in `src/sim/worldgen.ts`, and `wadeSpeed` per species. The terrain lookup is `tileAt` in `world.ts`. Water visuals: `WaterView.ts`, `waterArt.ts`, and the water colors in `drawGround` (`worldArt.ts`). |
 | Change the diet rule | `canEat` in `src/sim/systems/feeding.ts`. Food amounts and regrowth are in the `FOOD` table in the same file. |
 | Tune weapon aim limits | `MountDef` (`baseAngle`, `arcHalf`), `HeadDef.maxYaw`. The aim maths is in `systems/aiming.ts`. |
@@ -194,7 +261,7 @@ tests/       vitest: sim/, net/, server/ (the server tests open real WebSockets 
 ```
 npm install
 npm run dev          # server :8080 (tsx watch) + Vite :5173 (proxies /api and /ws); play at :5173
-npm test             # 97 tests, about 2 s
+npm test             # 112 tests, about 3 s (longer under load)
 npm run build        # tsc + vite (dist/) + esbuild server bundle (dist-server/server.cjs)
 docker compose up --build -d   # production, http://localhost:8080
 ```
@@ -205,6 +272,8 @@ docker compose up --build -d   # production, http://localhost:8080
 - No browser driver is in the repo, and playwright is not installed. What worked in the latest session:
   - **Static screenshots:** `msedge --headless=new --disable-gpu --window-size=1728,1080 --virtual-time-budget=8000 --user-data-dir=<tmp> --screenshot=<out.png> "http://localhost:5173/?preview"`. Edge is at `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`.
   - **Edge sometimes writes no screenshot** when its stderr goes to `/dev/null`, or when the `--user-data-dir` is new or still in use. Pipe stderr instead (`2>&1 | tail -1`), use a fresh directory per run, and check that the file exists.
+  - **The screenshot file can appear a few seconds after the command returns.** Poll for it before deciding the run failed.
+  - **Headless Edge leaves processes behind.** `kill()` on the CDP-driven Edge only stops the parent. After many runs, dozens of leftover processes slowed the machine and dropped the in-game fps from about 45 to 13. Stop them by their `--user-data-dir` (`Get-CimInstance Win32_Process` filtered on the command line) after each run.
   - **Driving the game:** a small Node script (not committed; it lived in the session scratchpad):
     1. Start Edge with `--remote-debugging-port` and connect over CDP using the repo's `ws` package (`createRequire` on the repo's `package.json`).
     2. Open `/?debug`, wait about 2.5 s, press `1` (found a team), then the mount key (`1` Triceratops, `2` Velociraptor, `3` Brontosaurus).
@@ -238,6 +307,7 @@ docker compose up --build -d   # production, http://localhost:8080
 6. **No committed browser end-to-end test.** The protocol and `Match` are covered by tests, but rendering is only checked by hand and screenshots.
 7. **Omnivores** are supported by the rules but no omnivore species exists yet. A small herbivore exists only as a test definition.
 8. **Brontosaurus feeding reach:** the sim measures food distance from the body center, but the head is about 65 px ahead. A reach based on the neck would make eating look right (`canEat`/`feed` in `feeding.ts`, `geometry.ts`).
-9. **Collision is one circle per dino.** The Brontosaurus's long neck and tail pass through rocks and other dinos, and its tail whip uses a reach around the body center.
-10. **Docker image is stale.** Rebuild with `docker compose up --build -d` (watch out for the Windows port-mapping gotcha above).
-11. **Untested by unit tests:** client rendering (water, chains, shadows) is only checked by screenshots.
+9. **Bigger maps need chunked ground textures.** 4096 px is one canvas, the safe single-texture limit.
+10. **Collision is one circle per dino.** The Brontosaurus's long neck and tail pass through rocks and other dinos, and its tail whip uses a reach around the body center.
+11. **Docker image is stale.** Rebuild with `docker compose up --build -d` (watch out for the Windows port-mapping gotcha above).
+12. **Untested by unit tests:** client rendering (water, chains, shadows) is only checked by screenshots.

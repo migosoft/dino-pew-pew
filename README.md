@@ -33,25 +33,34 @@ your mount's ability (15 s cooldown), E opens the shop (in your base camp), hold
   - Velociraptor: carnivore, fast, small, a light gun on each side of its metal saddle.
   - Brontosaurus: herbivore, huge, slow and very tough. It carries a weapons platform on its
     back, with a glass cockpit dome, two red gun pods on each flank and a turret at the rear.
+  - T-Rex: carnivore, big and strong, between the Triceratops and the Brontosaurus in size. Its
+    head armor carries a gun barrel across the head with a gun at each end, and each armored
+    shoulder carries a cannon.
 
   Triceratops and Velociraptor fire both guns together, along their barrels, within the arc
-  the mount allows. The Brontosaurus fires only the guns on the side of the cursor: left,
+  the mount allows. The T-Rex fires each gun that is on target; its head guns turn with its
+  head. The Brontosaurus fires only the guns on the side of the cursor: left,
   right or behind. Nothing fires straight ahead, because its neck is in the way.
 - **Abilities (right click, 15 s cooldown):**
   - The Velociraptor leaps toward the cursor, over rocks and dinos, and slams down on whoever
     is below.
   - The Triceratops dashes straight ahead and rams everything in its path.
   - The Brontosaurus sweeps its tail through everything behind it, and shoves it away.
+  - The T-Rex lunges forward and bites the nearest dino in front of it, for heavy damage.
 
   Wild dinos use them too, now and then. Every dino also has a natural melee attack (horns,
-  claws, stamping feet) against whatever is right in front of it.
-- **Water:** lakes and winding rivers cross the 3072 px world.
+  claws, stamping feet, jaws) against whatever is right in front of it.
+- **Water:** lakes and winding rivers cross the 4096 px world.
   - Shallow water, at the shores and at fords, doesn't slow anyone down.
-  - Deep water slows small dinos a lot and big ones only a little: the Velociraptor keeps 40% of
-    its speed, the Triceratops 70%, the Brontosaurus 90%. A leap passes over it.
-  - Calm wild dinos walk around lakes; hunting or fleeing ones wade straight in.
-  - The water has little waves and fish shadows that dart away, and every footstep leaves a
-    ripple.
+  - Deep water slows small dinos a lot and big ones only a little: the Velociraptor keeps 25% of
+    its speed, the Triceratops 70%, the T-Rex 75%, the Brontosaurus 90%. A leap passes over it.
+  - **Rivers flow.** The four-legged giants (Triceratops, Brontosaurus) don't notice the current.
+    It slows the T-Rex (80% of its speed) and the Velociraptor (60%), and it carries the
+    Velociraptor downstream. In a deep river a raptor crawls and gets swept away.
+  - Calm wild dinos walk around lakes (and wild raptors around rivers); hunting or fleeing ones
+    wade straight in.
+  - The water has little waves, streaks that run downstream in rivers, fish shadows in the
+    lakes that dart away, and every footstep leaves a ripple.
 - **Wild dinosaurs** without riders roam the world (more when more riders are online).
   Herbivores graze and charge (or flee from) attackers; raptors hunt riders outside their camp.
 - **Eating heals:** stand still next to food. Herbivores eat bushes and ferns — and trees, if
@@ -83,7 +92,8 @@ where it sits (`parent: 'body' | 'head'`, `offset`), its rest direction (`baseAn
 far it can swivel (`arcHalf`). Projectiles always leave along the barrel's real direction.
 The Brontosaurus is the example for broadside guns: body mounts at `baseAngle` ±90° and 180°,
 with `fireMode: 'side'` so that only the guns whose arc holds the cursor fire. `wadeSpeed` sets
-how much speed a species keeps in deep water. New species also need sprites drawn in
+how much speed a species keeps in deep water, `currentSlow` how much it keeps in a river, and
+`currentDrift` how much of the current carries it along. New species also need sprites drawn in
 `src/client/render/textures/` under the keys `<kind>_body_<palette>_<pose>`, `<kind>_shadow_<pose>`
 and (if it has a head) `<kind>_head_<palette>` (palette = `t0`..`t3`). A long neck and tail can
 bend: list the species in [src/client/render/chains.ts](src/client/render/chains.ts) and draw each
