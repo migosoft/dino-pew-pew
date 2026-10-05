@@ -96,3 +96,78 @@ export function dinosNear(state: GameState, x: number, y: number, r: number, out
   if (cells > 1) out.sort((a, b) => a - b);
   return out;
 }
+
+// Uniform grid over state.food. Food never moves, so the grid is rebuilt only when
+// state.food changes: a carcass pushed (length) or rotted away (a new filtered array).
+// Queries widen their radius by the largest food reach, so "within reach" checks
+// that add the food's own reach find everything.
+
+interface FoodGrid {
+  cols: number;
+  rows: number;
+  cellStart: Int32Array;
+  items: Int32Array;
+  maxReach: number;
+  food: GameState['food'] | null;
+  count: number;
+}
+
+const foodGrids = new WeakMap<GameState, FoodGrid>();
+
+function foodGrid(state: GameState): FoodGrid {
+  let g = foodGrids.get(state);
+  const fs = state.food;
+  if (g && g.food === fs && g.count === fs.length) return g;
+  const { width, height } = state.world;
+  const cols = Math.max(1, Math.ceil(width / CELL));
+  const rows = Math.max(1, Math.ceil(height / CELL));
+  if (!g || g.cols !== cols || g.rows !== rows) {
+    g = { cols, rows, cellStart: new Int32Array(cols * rows + 1), items: new Int32Array(0), maxReach: 0, food: null, count: 0 };
+    foodGrids.set(state, g);
+  }
+  const n = fs.length;
+  if (g.items.length < n) g.items = new Int32Array(n * 2);
+  const { cellStart, items } = g;
+  const cellOf = new Int32Array(n);
+  cellStart.fill(0);
+  let maxReach = 0;
+  for (let i = 0; i < n; i++) {
+    const f = fs[i];
+    const cx = Math.min(cols - 1, Math.max(0, Math.floor(f.x / CELL)));
+    const cy = Math.min(rows - 1, Math.max(0, Math.floor(f.y / CELL)));
+    const c = cy * cols + cx;
+    cellOf[i] = c;
+    cellStart[c + 1]++;
+    if (f.reach > maxReach) maxReach = f.reach;
+  }
+  for (let c = 0; c < cols * rows; c++) cellStart[c + 1] += cellStart[c];
+  const next = cellStart.slice(0, cols * rows);
+  for (let i = 0; i < n; i++) items[next[cellOf[i]]++] = i;
+  g.maxReach = maxReach;
+  g.food = fs;
+  g.count = n;
+  return g;
+}
+
+/**
+ * Indices into state.food of food that may lie within `r` (plus its own reach) of
+ * (x, y). Candidates only, not sorted: callers test the exact distance and break
+ * distance ties by the lower index. Reuses and returns `out`.
+ */
+export function foodNear(state: GameState, x: number, y: number, r: number, out: number[]): number[] {
+  out.length = 0;
+  const g = foodGrid(state);
+  const rr = r + g.maxReach;
+  const x0 = Math.max(0, Math.floor((x - rr) / CELL));
+  const x1 = Math.min(g.cols - 1, Math.floor((x + rr) / CELL));
+  const y0 = Math.max(0, Math.floor((y - rr) / CELL));
+  const y1 = Math.min(g.rows - 1, Math.floor((y + rr) / CELL));
+  for (let cy = y0; cy <= y1; cy++) {
+    for (let cx = x0; cx <= x1; cx++) {
+      const c = cy * g.cols + cx;
+      const end = g.cellStart[c + 1];
+      for (let k = g.cellStart[c]; k < end; k++) out.push(g.items[k]);
+    }
+  }
+  return out;
+}

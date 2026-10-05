@@ -7,9 +7,10 @@ import { findDino, isAirborne, isDeepWater, isFree, isRiver } from './world';
 import { BASE_RADIUS, isInOwnBase } from './players';
 import { canEat } from './systems/feeding';
 import { isHostile } from './systems/melee';
-import { dinosNear, maxDinoRadius } from './spatial';
+import { dinosNear, foodNear, maxDinoRadius } from './spatial';
 
 const near: number[] = [];
+const nearFood: number[] = [];
 
 // Behaviour of riderless wild dinosaurs. Like a player, the AI only produces an
 // InputCommand; movement, eating and melee are the normal systems.
@@ -103,12 +104,15 @@ function ahead(d: Dino, dist = 40): Vec2 {
 function nearestFood(state: GameState, d: Dino, def: DinoDef, range: number): FoodSource | undefined {
   let best: FoodSource | undefined;
   let bestD = range * range;
-  for (const f of state.food) {
+  let bestI = -1;
+  for (const i of foodNear(state, d.x, d.y, range, nearFood)) {
+    const f = state.food[i];
     if (f.food < 5 || !canEat(def, f.kind)) continue;
     const dd = (f.x - d.x) ** 2 + (f.y - d.y) ** 2;
-    if (dd < bestD) {
+    if (dd < bestD || (dd === bestD && i < bestI)) {
       best = f;
       bestD = dd;
+      bestI = i;
     }
   }
   return best;

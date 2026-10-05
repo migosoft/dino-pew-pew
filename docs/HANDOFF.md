@@ -373,7 +373,7 @@ docker compose up --build -d   # production, http://localhost:8080
 12. **Untested by unit tests:** client rendering (water, chains, shadows) is only checked by screenshots.
 
 ## Capacity (measured 2026-10-05)
-The cap is `MAX_PLAYERS = 16` (`players.ts`), with 4 teams. Measured with the simulation benchmark: bots on 4 teams, all driving and firing nonstop, 4 simulated minutes.
+The cap is `MAX_PLAYERS = 23` (`players.ts`, raised from 16 on 2026-10-05), with 4 teams. Measured with the simulation benchmark: bots on 4 teams, all driving and firing nonstop, 4 simulated minutes.
 
 | Players | Dinos alive | Bullets in flight | Tick (budget 16.7 ms) | Snapshot, compressed | Server upload |
 |---|---|---|---|---|---|
@@ -391,8 +391,8 @@ The cap is `MAX_PLAYERS = 16` (`players.ts`), with 4 teams. Measured with the si
 ## Performance backlog
 These were found in the performance review of 2026-10-05 but not done. They are roughly in order of payoff within each group, and line numbers are from that date.
 
-**Simulation** (after the grid, the food scans are the biggest cost in a profile):
-- **Food grid** for `nearestFood` (`ai.ts`) and `findFood` (`feeding.ts`). Both scan all ~1000 food entries for each dino that is grazing, foraging or hurt. Plants never move, so the grid only needs carcasses added and removed.
+**Simulation:**
+- ~~Food grid~~ **done** (2026-10-05): `foodNear` in `spatial.ts` is a grid over `state.food`, rebuilt only when the array or its length changes (food never moves). `nearestFood` (`ai.ts`) and `findFood` (`feeding.ts`) use it and break distance ties by the lower index, so results match the old full scan exactly (same state hash after 90 s with wildlife). Tick with 16 idle players and 65 wild dinos: 0.25 ms → 0.21 ms.
 - `clearHeading` (`ai.ts`): hoist the `[16, 32]` and `[24, 48]` arrays, cache the chosen heading for a few ticks, and use a per-tile "wet" bitmap instead of noise lookups per probe.
 - Look up `tileIndexAt` once per dino per tick: `terrainSpeedFactor` and `applyCurrent` (`movement.ts`) call it 2–3 times. Have `flowAt` return through out-parameters instead of a new object.
 - Ability hit scans (`abilities.ts`: ram, whip, bite, land): use `dinosNear`, test distance first, and make `abilityHit` a Set.

@@ -6,7 +6,9 @@ import { generateWorld, MAX_WORLD_CARCASSES, MIN_WORLD_CARCASSES } from '../../s
 import { createDino } from '../../src/sim/world';
 import { addPlayer, createTeam } from '../../src/sim/players';
 import { applyDamage } from '../../src/sim/systems/damage';
-import { CARCASS_DECAY_SECS, FOOD, REGROW_DELAY, canEat, feed, makeCarcass, updateFood } from '../../src/sim/systems/feeding';
+import { CARCASS_DECAY_SECS, FOOD, REGROW_DELAY, addCarcassFor, canEat, feed, findFood, makeCarcass, updateFood } from '../../src/sim/systems/feeding';
+import { foodNear } from '../../src/sim/spatial';
+import { makeRng, randRange } from '../../src/sim/rng';
 
 const DT = 1 / 60;
 
@@ -189,5 +191,57 @@ describe('velociraptor', () => {
     expect(r.radius).toBeLessThan(t.radius);
     expect(r.mounts[0].baseAngle).toBe(0);
     expect(r.mounts[0].arcHalf + (r.head?.maxYaw ?? 0)).toBeLessThan(t.mounts[0].arcHalf + t.head!.maxYaw);
+  });
+});
+
+describe('food grid', () => {
+  /** The old linear scan that findFood replaced. */
+  function bruteFindFood(s: GameState, d: ReturnType<typeof createDino>): FoodSource | undefined {
+    const def = getDino(d.kind);
+    let best: FoodSource | undefined;
+    let bestD = Infinity;
+    for (const f of s.food) {
+      if (f.food <= 0 || !canEat(def, f.kind)) continue;
+      const reach = f.reach + def.radius;
+      const dd = (f.x - d.x) ** 2 + (f.y - d.y) ** 2;
+      if (dd <= reach * reach && dd < bestD) {
+        best = f;
+        bestD = dd;
+      }
+    }
+    return best;
+  }
+
+  it('finds the same food as a full scan, on a real world', () => {
+    const s = createMatch(3);
+    const rng = makeRng(9);
+    const d = createDino(s, 'triceratops', 'wild', 0, 0, 0);
+    const out: number[] = [];
+    for (let k = 0; k < 2000; k++) {
+      // Half the probes stand right next to a food source, the rest anywhere.
+      const f = s.food[Math.floor(randRange(rng, 0, s.food.length))];
+      d.x = k % 2 ? f.x + randRange(rng, -20, 20) : randRange(rng, 0, s.world.width);
+      d.y = k % 2 ? f.y + randRange(rng, -20, 20) : randRange(rng, 0, s.world.height);
+      expect(findFood(s, d)).toBe(bruteFindFood(s, d));
+      const r = 300;
+      const got = new Set(foodNear(s, d.x, d.y, r, out));
+      s.food.forEach((g, i) => {
+        if (Math.hypot(g.x - d.x, g.y - d.y) <= r) expect(got.has(i)).toBe(true);
+      });
+    }
+  });
+
+  it('sees carcasses as they appear and rot away', () => {
+    const s = createMatch(3);
+    const d = createDino(s, 'trex', 'wild', 1000, 1000, 0);
+    d.hp = 10;
+    const victim = createDino(s, 'velociraptor', 'wild', 1010, 1000, 0);
+    s.food = s.food.filter((f) => f.kind !== 'carcass');
+    expect(findFood(s, d)).toBeUndefined();
+    const c = addCarcassFor(s, victim);
+    expect(findFood(s, d)).toBe(c);
+    c.food = 0;
+    updateFood(s, DT);
+    expect(findFood(s, d)).toBeUndefined();
   });
 });

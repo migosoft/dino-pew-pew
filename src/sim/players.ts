@@ -6,7 +6,7 @@ import { createDino, findDino, findPlayer, findTeam, isFree } from './world';
 import { applyUpgrades, noUpgrades, payBounty } from './upgrades';
 
 export const MAX_TEAMS = 4;
-export const MAX_PLAYERS = 16;
+export const MAX_PLAYERS = 23;
 /** Radius of a team's base camp safe zone. */
 export const BASE_RADIUS = 90;
 export const RESPAWN_TIME = 4;

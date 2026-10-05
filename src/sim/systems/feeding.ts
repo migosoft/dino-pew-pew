@@ -1,5 +1,8 @@
 import type { Dino, DinoDef, FoodKind, FoodSource, GameState } from '../types';
 import { getDino } from '../defs/dinos';
+import { foodNear } from '../spatial';
+
+const nearFood: number[] = [];
 
 /** Per-kind food tuning. Carcasses hold more and cost 1/4 food per HP: a steady supply for carnivores. */
 export const FOOD: Record<FoodKind, { maxFood: number; costPerHp: number; regrowPerSec: number }> = {
@@ -67,13 +70,16 @@ export function findFood(state: GameState, d: Dino): FoodSource | undefined {
   const def = getDino(d.kind);
   let best: FoodSource | undefined;
   let bestD = Infinity;
-  for (const f of state.food) {
+  let bestI = -1;
+  for (const i of foodNear(state, d.x, d.y, def.radius, nearFood)) {
+    const f = state.food[i];
     if (f.food <= 0 || !canEat(def, f.kind)) continue;
     const reach = f.reach + def.radius;
     const dd = (f.x - d.x) ** 2 + (f.y - d.y) ** 2;
-    if (dd <= reach * reach && dd < bestD) {
+    if (dd <= reach * reach && (dd < bestD || (dd === bestD && i < bestI))) {
       best = f;
       bestD = dd;
+      bestI = i;
     }
   }
   return best;
