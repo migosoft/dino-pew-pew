@@ -5,6 +5,7 @@ import { RESPAWN_TIME, TEAM_EMPTY_TIMEOUT, addPlayer, removePlayer } from '../..
 import { COUNTDOWN, eliminateTeam, switchTeam } from '../../src/sim/rounds';
 import { campOf } from '../../src/sim/camp';
 import { tryStartAbility } from '../../src/sim/systems/abilities';
+import { isAirborne } from '../../src/sim/world';
 import { SMALL } from '../helpers';
 
 const run = (s: GameState, sec: number) => {
@@ -84,7 +85,11 @@ describe('rounds', () => {
     const d = s.dinos.find((x) => x.playerId === a.id)!;
     tryStartAbility(s, d, { throttle: 1, turn: 0, aimWorld: { x: d.x + 100, y: d.y }, fire: false, ability: true });
     step(s, new Map(), 1 / 60);
+    expect(isAirborne(d)).toBe(true);
     eliminateTeam(s, 'team1');
+    expect(isAirborne(d)).toBe(false);
+    expect(d.alive).toBe(false);
+    expect(d.hp).toBe(0);
     expect(() => run(s, 2)).not.toThrow();
     expect(s.dinos.some((x) => x.playerId === a.id && x.alive)).toBe(false);
     expect(a.dinoId).toBeNull();
