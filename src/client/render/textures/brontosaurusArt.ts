@@ -37,9 +37,9 @@ const r = (v: number) => Math.round(v * S);
 export const BRONTO_BODY = r(48);
 
 /** Thick at the shoulders, slimmer behind the head: five links from the shoulder pivot. */
-export const BRONTO_NECK: ChainSegment[] = taperedChain(5, 7.2, 4.6 * S, 2.4 * S);
+export const BRONTO_NECK: ChainSegment[] = taperedChain(5, 7.2, 4 * S, 2.2 * S);
 /** From the root (under the hips) to a whip-thin tip: seven links. */
-export const BRONTO_TAIL: ChainSegment[] = taperedChain(7, 8, 5.9 * S, 0.5 * S, 1.6);
+export const BRONTO_TAIL: ChainSegment[] = taperedChain(7, 8, 5 * S, 0.5 * S, 1.6);
 /** How far the head reaches past the end of the neck (for the mouth position). */
 export const BRONTO_HEAD_LEN = r(11);
 
@@ -51,11 +51,11 @@ export function drawBrontosaurusHead(p: DinoPalette): HTMLCanvasElement {
   const cx = W / 2;
   const cy = H / 2;
   const hx = cx + 4 * S;
-  ellipse(c, hx, cy, 6 * S, 4.4 * S, (nx, ny, x, y) => litShade(nx, ny, x, y, p.dark, p.base, p.light));
-  ellipse(c, hx + 4 * S, cy, 3 * S, 3.2 * S, (nx, ny, x, y) => litShade(nx, ny, x, y, p.dark, p.base, p.light));
+  ellipse(c, hx, cy, 5.6 * S, 3.9 * S, (nx, ny, x, y) => litShade(nx, ny, x, y, p.dark, p.base, p.light));
+  ellipse(c, hx + 4 * S, cy, 3 * S, 2.8 * S, (nx, ny, x, y) => litShade(nx, ny, x, y, p.dark, p.base, p.light));
   // Eyes under brow ridges.
   for (const side of [-1, 1]) {
-    const ey = Math.round(cy + side * 3 * S);
+    const ey = Math.round(cy + side * 2.6 * S);
     rect(c, hx - 2, side < 0 ? ey : ey - 1, 2, 2, EYE);
     rect(c, hx - 2, side < 0 ? ey - 1 : ey + 1, 2, 1, p.light);
   }
@@ -73,32 +73,32 @@ export function drawBrontosaurusBody(p: DinoPalette, pose: 0 | 1): HTMLCanvasEle
   const cy = BRONTO_BODY / 2;
   const swing = (pose === 0 ? 2 : -2) * S;
   const legs: [number, number, number][] = [
-    [13, -10.5, swing],
-    [13, 10.5, -swing],
-    [-12, -11, -swing],
-    [-12, 11, swing],
+    [13, -9, swing],
+    [13, 9, -swing],
+    [-12, -9.5, -swing],
+    [-12, 9.5, swing],
   ];
   for (const [lx, ly, sw] of legs) {
     const fx = cx + lx * S + sw;
     const fy = cy + ly * S;
-    ellipse(c, fx, fy, 4.6 * S, 3.8 * S, (nx, ny, x, y) => litShade(nx, ny, x, y, p.dark, p.dark, p.base));
+    ellipse(c, fx, fy, 4.4 * S, 3.5 * S, (nx, ny, x, y) => litShade(nx, ny, x, y, p.dark, p.dark, p.base));
     // Blunt toenails on the front of each foot.
     for (const t of [-2, 0, 2]) px(c, fx + 4 * S, fy + t, NAIL);
   }
   // Shoulders, where the neck grows out.
-  ellipse(c, cx + 12 * S, cy, 6 * S, 7 * S, (nx, ny, x, y) => litShade(nx, ny, x, y, p.dark, p.base, p.light));
+  ellipse(c, cx + 12 * S, cy, 5.6 * S, 5.8 * S, (nx, ny, x, y) => litShade(nx, ny, x, y, p.dark, p.base, p.light));
   // Big barrel of a torso, widest at the hips.
-  ellipse(c, cx - S, cy, 18.5 * S, 12.5 * S, (nx, ny, x, y) => litShade(nx, ny, x, y, p.dark, p.base, p.light));
+  ellipse(c, cx - S, cy, 18.5 * S, 10.2 * S, (nx, ny, x, y) => litShade(nx, ny, x, y, p.dark, p.base, p.light));
   // Spine ridge.
   for (let x = r(-16); x <= r(14); x += 4) px(c, cx + x, cy, p.dark);
   for (let x = r(-15); x <= r(15); x += 4) px(c, cx + x, cy - 1, p.light);
   // Mottled hide.
   for (const [sx, sy] of [
     [-10, -6],
-    [-4, 7],
-    [5, -8],
+    [-4, 6],
+    [5, -7],
     [-13, 4],
-    [8, 6],
+    [8, 5],
     [0, -4],
     [-16, -3],
     [12, -2],
