@@ -372,6 +372,22 @@ docker compose up --build -d   # production, http://localhost:8080
 11. **Docker image is stale.** Rebuild with `docker compose up --build -d` (watch out for the Windows port-mapping gotcha above).
 12. **Untested by unit tests:** client rendering (water, chains, shadows) is only checked by screenshots.
 
+## Capacity (measured 2026-10-05)
+The cap is `MAX_PLAYERS = 16` (`players.ts`), with 4 teams. Measured with the simulation benchmark: bots on 4 teams, all driving and firing nonstop, 4 simulated minutes.
+
+| Players | Dinos alive | Bullets in flight | Tick (budget 16.7 ms) | Snapshot, compressed | Server upload |
+|---|---|---|---|---|---|
+| 16 | 89 | 53 | 1.7 ms | 2.4 KB | ~6 Mbit/s |
+| 32 | 109 | 113 | 2.2 ms | 3.1 KB | ~16 Mbit/s |
+| 64 | 132 | 235 | 2.3 ms | 3.5 KB | ~36 Mbit/s |
+| 100 | 160 | 399 | 3.1 ms | 4.3 KB | ~69 Mbit/s |
+
+- **Server CPU is not the limit.** Compression costs about 0.4 ms per player per snapshot, and `ws` runs it on Node's worker pool, off the main thread.
+- **Upload bandwidth is the limit,** because every player gets every dino. A home connection supports roughly 16–30 players; a hosted server supports 64 or more. Each player needs about 0.5–0.7 Mbit/s down.
+- **Next come the gameplay limits:** 4 teams, a 90 px base camp, and a 4096 px map. Also, the client draws every bullet on the map, including off-screen ones.
+- **Raising the cap to 32** is safe on the server and protocol side. Test with real players first. For 50 or more, add per-player area-of-interest culling (see the backlog).
+- **Not tested:** more than 2 real browsers on separate machines, over a real network.
+
 ## Performance backlog
 These were found in the performance review of 2026-10-05 but not done. They are roughly in order of payoff within each group, and line numbers are from that date.
 
