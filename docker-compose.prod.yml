@@ -1,7 +1,9 @@
+# Fixed project name: container and volume names don't depend on the folder name.
+name: dino-pew-pew
 services:
-  dinoriders:
+  dino-pew-pew:
     build: .
-    image: dinoriders:latest
+    image: dino-pew-pew:latest
     restart: unless-stopped
     # No published ports: only Caddy is reachable from outside.
   caddy:
@@ -16,7 +18,7 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - dinoriders
+      - dino-pew-pew
     restart: unless-stopped
 volumes:
   caddy_data:

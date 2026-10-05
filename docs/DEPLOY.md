@@ -2,12 +2,12 @@
 
 Production runs two containers from `docker-compose.prod.yml`:
 
-- **`dinoriders`**: the game server. It serves the client, `/api` and the WebSocket on port 8080 inside the Docker network only.
-- **`caddy`**: listens on ports 80 and 443. It gets a Let's Encrypt certificate for `$DOMAIN` automatically and proxies everything, including the WebSocket upgrade, to `dinoriders:8080`.
+- **`dino-pew-pew`**: the game server. It serves the client, `/api` and the WebSocket on port 8080 inside the Docker network only.
+- **`caddy`**: listens on ports 80 and 443. It gets a Let's Encrypt certificate for `$DOMAIN` automatically and proxies everything, including the WebSocket upgrade, to `dino-pew-pew:8080`.
 
 Pages loaded over HTTPS make the client use `wss://` on its own.
 
-The game keeps all its state in memory. Run exactly one `dinoriders` container: more replicas would split the players into separate worlds. Every restart or redeploy starts a fresh world.
+The game keeps all its state in memory. Run exactly one `dino-pew-pew` container: more replicas would split the players into separate worlds. Every restart or redeploy starts a fresh world.
 
 The local `docker-compose.yml` (plain HTTP on :8080) is for local use and is not used in production.
 
@@ -31,8 +31,8 @@ Let's Encrypt validates through port 80, so keep port 80 open.
 ## 2. First deploy
 
 ```bash
-git clone https://github.com/migosoft/dino-pew-pew.git ~/dinoriders
-cd ~/dinoriders
+git clone https://github.com/migosoft/dino-pew-pew.git ~/dino-pew-pew
+cd ~/dino-pew-pew
 cp .env.example .env        # edit DOMAIN if needed
 docker compose -f docker-compose.prod.yml up -d --build
 ```
@@ -41,11 +41,12 @@ The build runs `npm test` and `npm run build`, which takes a few minutes on 2 OC
 
 `.env` is ignored by git. Never commit it.
 
-**Switching over from the hand-edited setup.** The VM's working tree has local edits to `docker-compose.yml` and a hand-made `Caddyfile`. Drop them once before the first pull that includes this file:
+**Switching over from the hand-edited setup.** The VM still has the old clone at `~/dinoriders`, with local edits to `docker-compose.yml` and a hand-made `Caddyfile`. Do this once:
 
 ```bash
 cd ~/dinoriders
-docker compose down                     # stops the old hand-edited stack
+docker compose down                     # stops the old hand-edited stack (frees ports 80/443)
+cd ~ && mv dinoriders dino-pew-pew && cd dino-pew-pew
 git checkout docker-compose.yml         # discard the local edits
 rm Caddyfile                            # the repo now tracks its own Caddyfile
 git pull
@@ -53,12 +54,17 @@ cp .env.example .env                    # if there is no .env yet
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-Both files use the same project directory and the same volume names, so Caddy keeps the certificate it already has.
+The compose files set the project name `dino-pew-pew`, so the volumes are new (`dino-pew-pew_caddy_data`), and Caddy requests one new certificate. That happens once and is well within Let's Encrypt's limits. Once `https://<DOMAIN>` works, you can remove the old leftovers:
+
+```bash
+docker volume rm dinoriders_caddy_data dinoriders_caddy_config
+docker image rm dinoriders:latest
+```
 
 ## 3. Update
 
 ```bash
-cd ~/dinoriders && git pull && docker compose -f docker-compose.prod.yml up -d --build
+cd ~/dino-pew-pew && git pull && docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 The `caddy_data` volume keeps the certificates across redeploys. Don't delete it (`docker compose down -v` would). Losing it on every deploy means new certificate requests each time, which hits Let's Encrypt rate limits.
@@ -73,7 +79,7 @@ The `caddy_data` volume keeps the certificates across redeploys. Don't delete it
   - the DNS name doesn't resolve to the VM yet;
   - port 80 is blocked, either in the Oracle security list or in iptables.
 - **Health check:** `curl https://$DOMAIN/api/health`
-- **Game server log:** `docker compose -f docker-compose.prod.yml logs dinoriders --tail 50`
+- **Game server log:** `docker compose -f docker-compose.prod.yml logs dino-pew-pew --tail 50`
 - **`DOMAIN` not set:** compose refuses to start with `set DOMAIN in .env, …`. Create `.env` from `.env.example`.
 
 ## 5. The public IP can change
