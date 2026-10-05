@@ -94,6 +94,8 @@ npm test             # 191 tests, about 5 s (longer under load)
 npm run build        # tsc + vite (dist/) + esbuild server bundle (dist-server/server.cjs)
 docker compose up --build -d   # production, http://localhost:8080
 ```
+**Production over HTTPS** (Caddy + Let's Encrypt on the Oracle VM): see [DEPLOY.md](DEPLOY.md).
+
 **Environment variables:**
 - `PORT` (default 8080), `STATIC_DIR` (default `./dist`).
 - `SEED`: the world seed of the first RANDOM round (random if unset).
