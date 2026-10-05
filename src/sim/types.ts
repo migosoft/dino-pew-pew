@@ -315,6 +315,7 @@ export interface World {
 export type GameEvent =
   | {
       type: 'shot';
+      /** The shooter: a dino id, or the structure id for tower shots (then mount is -1). */
       dinoId: number;
       mount: number;
       projectileId: number;
@@ -336,7 +337,14 @@ export type GameEvent =
   | { type: 'death'; dinoId: number; x: number; y: number; team: Team }
   | { type: 'kill'; killer: number | null; victim: number | null; victimKind: string }
   | { type: 'spawn'; playerId: number; dinoId: number }
-  | { type: 'bounty'; playerId: number; amount: number; x: number; y: number };
+  | { type: 'bounty'; playerId: number; amount: number; x: number; y: number }
+  | { type: 'structureHit'; structureId: number; x: number; y: number; shielded: boolean }
+  | { type: 'towerDown'; structureId: number; team: Team; by: number | null }
+  | { type: 'towerUp'; structureId: number; team: Team }
+  | { type: 'campDown'; team: Team; by: number | null }
+  | { type: 'eliminated'; team: Team }
+  | { type: 'roundWon'; team: Team | null }
+  | { type: 'phase'; phase: RoundPhase };
 
 export type StructureKind = 'camp' | 'tower';
 

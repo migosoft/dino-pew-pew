@@ -2,7 +2,7 @@ import type { GameState } from '../types';
 import { getDino } from '../defs/dinos';
 import { forEachObstacleNear } from '../world';
 import { applyDamage } from './damage';
-import { BASE_RADIUS } from '../players';
+import { damageStructure, structureHitBy } from './structures';
 import { buildDinoGrid, dinosNear, maxDinoRadius } from '../spatial';
 
 const near: number[] = [];
@@ -33,16 +33,14 @@ export function updateProjectiles(state: GameState, dt: number): void {
     });
     if (!p.alive) continue;
 
-    // Other teams' base camps are shielded: hostile shots fizzle at the edge.
-    for (const t of state.teams) {
-      if (t.id === p.team) continue;
-      if ((t.base.x - p.x) ** 2 + (t.base.y - p.y) ** 2 < BASE_RADIUS * BASE_RADIUS) {
-        p.alive = false;
-        state.events.push({ type: 'impact', projectileId: p.id, x: p.x, y: p.y });
-        break;
-      }
+    // Enemy camp buildings and towers stop the bolt (own-team structures let it through).
+    const hitS = structureHitBy(state, p.x, p.y, p.radius, p.team);
+    if (hitS) {
+      p.alive = false;
+      state.events.push({ type: 'impact', projectileId: p.id, x: p.x, y: p.y });
+      damageStructure(state, hitS, p.damage, p.ownerId, p.x, p.y);
+      continue;
     }
-    if (!p.alive) continue;
 
     for (const j of dinosNear(state, p.x, p.y, p.radius + maxDinoRadius(), near)) {
       const d = state.dinos[j];

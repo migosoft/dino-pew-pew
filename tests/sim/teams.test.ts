@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import type { GameState, InputCommand } from '../../src/sim/types';
 import { createMatch, step } from '../../src/sim/sim';
 import {
-  BASE_RADIUS,
   RESPAWN_TIME,
   TEAM_EMPTY_TIMEOUT,
   addPlayer,
@@ -71,18 +70,6 @@ describe('combat between teams', () => {
     s.projectiles.push({ id: 999, ownerId: -1, team: red.id, x: dc.x - 20, y: dc.y, px: 0, py: 0, vx: 270, vy: 0, traveled: 0, range: 300, damage: 50, radius: 2, kind: 'bolt', alive: true });
     for (let i = 0; i < 20; i++) updateProjectiles(s, DT);
     expect(dc.hp).toBe(dc.maxHp);
-  });
-
-  it('base camps are safe zones: no damage, hostile shots fizzle at the edge', () => {
-    const { s, red, db } = setup();
-    applyDamage(s, s.dinos.find((d) => d.team === red.id)!, 50, db.id);
-    expect(s.dinos.find((d) => d.team === red.id)!.hp).toBe(100);
-    // Fire a blue bolt straight at the red base center from outside.
-    const base = red.base;
-    s.projectiles.push({ id: 998, ownerId: db.id, team: db.team, x: base.x + BASE_RADIUS + 20, y: base.y, px: 0, py: 0, vx: -270, vy: 0, traveled: 0, range: 300, damage: 50, radius: 2, kind: 'bolt', alive: true });
-    for (let i = 0; i < 10 && s.projectiles.length; i++) updateProjectiles(s, DT);
-    expect(s.projectiles).toHaveLength(0);
-    expect(s.events.some((e) => e.type === 'impact')).toBe(true);
   });
 
   it('a kill credits the killer, and the victim respawns at base after the delay', () => {

@@ -2,7 +2,6 @@ import type { AbilityDef, Dino, GameState, InputCommand } from '../types';
 import { getDino } from '../defs/dinos';
 import { DEG, angleDiff, angleTo, clamp, lerp } from '../math';
 import { isAirborne } from '../world';
-import { isInOwnBase } from '../players';
 import { resolveObstacles } from './collision';
 import { terrainSpeedFactor } from './movement';
 import { applyDamage } from './damage';
@@ -117,10 +116,10 @@ function land(state: GameState, d: Dino, ab: AbilityDef): void {
   }
 }
 
-/** Dash contact: damage (once per dash) and shove every hostile in front, except those safe in their camp. */
+/** Dash contact: damage (once per dash) and shove every hostile in front. */
 function ram(state: GameState, d: Dino, r: number, ab: AbilityDef): void {
   for (const b of state.dinos) {
-    if (b === d || !b.alive || isAirborne(b) || !isHostile(d, b) || isInOwnBase(state, b) || d.abilityHit.includes(b.id)) continue;
+    if (b === d || !b.alive || isAirborne(b) || !isHostile(d, b) || d.abilityHit.includes(b.id)) continue;
     const reach = r + getDino(b.kind).radius + ab.hitReach;
     if ((b.x - d.x) ** 2 + (b.y - d.y) ** 2 > reach * reach) continue;
     if (Math.abs(angleDiff(angleTo(d, b), d.heading)) > DASH_ARC) continue;
@@ -133,13 +132,13 @@ function ram(state: GameState, d: Dino, r: number, ab: AbilityDef): void {
   }
 }
 
-/** Tail whip: damage and shove every hostile behind the dino, except those safe in their camp. */
+/** Tail whip: damage and shove every hostile behind the dino. */
 function whip(state: GameState, d: Dino, r: number, ab: AbilityDef): void {
   const back = d.heading + Math.PI;
   const tail = getDino(d.kind).tail?.offset.x ?? -r;
   state.events.push({ type: 'whip', dinoId: d.id, x: d.x + Math.cos(back) * (-tail + 14), y: d.y + Math.sin(back) * (-tail + 14) });
   for (const b of state.dinos) {
-    if (b === d || !b.alive || isAirborne(b) || !isHostile(d, b) || isInOwnBase(state, b) || d.abilityHit.includes(b.id)) continue;
+    if (b === d || !b.alive || isAirborne(b) || !isHostile(d, b) || d.abilityHit.includes(b.id)) continue;
     const reach = r + getDino(b.kind).radius + ab.hitReach;
     if ((b.x - d.x) ** 2 + (b.y - d.y) ** 2 > reach * reach) continue;
     const dir = angleTo(d, b);
@@ -154,14 +153,14 @@ function whip(state: GameState, d: Dino, r: number, ab: AbilityDef): void {
   }
 }
 
-/** Bite: the jaws close on the one nearest hostile in front of the head, except one safe in its camp. */
+/** Bite: the jaws close on the one nearest hostile in front of the head. */
 function bite(state: GameState, d: Dino, ab: AbilityDef): void {
   const def = getDino(d.kind);
   const jaw = def.head?.offset.x ?? def.radius;
   let best: Dino | undefined;
   let bestDist = Infinity;
   for (const b of state.dinos) {
-    if (b === d || !b.alive || isAirborne(b) || !isHostile(d, b) || isInOwnBase(state, b)) continue;
+    if (b === d || !b.alive || isAirborne(b) || !isHostile(d, b)) continue;
     const dist = Math.hypot(b.x - d.x, b.y - d.y);
     if (dist > jaw + getDino(b.kind).radius + ab.hitReach || dist >= bestDist) continue;
     if (Math.abs(angleDiff(angleTo(d, b), d.heading)) > (ab.arc ?? Math.PI / 4)) continue;

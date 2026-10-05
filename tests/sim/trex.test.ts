@@ -9,7 +9,7 @@ import { spawnWild } from '../../src/sim/ecology';
 
 /** Open ground with no obstacles or food, all of it `tile`. */
 function arena(tile: number = Tile.Grass): GameState {
-  const s = createMatch(12, { cols: 60, rows: 60, water: false });
+  const s = createMatch(12, { cols: 60, rows: 60, water: false }, { camps: false });
   s.world.obstacles = [];
   s.world.grid = s.world.grid.map(() => []);
   s.food = [];
@@ -101,7 +101,7 @@ describe('t-rex bite', () => {
     expect(d.abilityCooldown).toBeGreaterThan(13);
   });
 
-  it('does not bite a rider safe in its own camp', () => {
+  it('bites a rider in its own camp (no safe zone)', () => {
     const s = arena();
     const { d, cmd } = trex(s);
     const t2 = createTeam(s)!;
@@ -116,7 +116,7 @@ describe('t-rex bite', () => {
       d.meleeCooldown = 999;
       step(s, cmd({ x: base.x + 200, y: base.y }, false, i === 0), DT);
     }
-    expect(victim.hp).toBe(victim.maxHp);
+    expect(victim.hp).toBeLessThan(victim.maxHp);
   });
 });
 

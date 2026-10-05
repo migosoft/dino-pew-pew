@@ -86,14 +86,14 @@ describe('velociraptor leap', () => {
     expect(uses).toBe(2);
   });
 
-  it('does not hurt riders sheltering in their own base camp', () => {
+  it('hurts riders in their own base camp (no safe zone)', () => {
     const s = arena();
     const other = createTeam(s)!;
     const { d, cmd } = rider(s, 'velociraptor', other.base.x - 60, other.base.y);
     const safe = createDino(s, 'triceratops', other.id, other.base.x, other.base.y, 0, 999);
     run(s, 40, () => cmd({ x: other.base.x, y: other.base.y }, true), () => (safe.meleeCooldown = 999));
     expect(Math.hypot(d.x - safe.x, d.y - safe.y)).toBeLessThan(40);
-    expect(safe.hp).toBe(safe.maxHp);
+    expect(safe.hp).toBeLessThan(safe.maxHp);
   });
 });
 
