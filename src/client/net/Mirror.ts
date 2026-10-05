@@ -1,7 +1,7 @@
 import type { Dino, Projectile } from '../../sim/types';
 import { DT, TICK_RATE } from '../../sim/types';
 import { lerp, lerpAngle } from '../../sim/math';
-import { decodeDino, type PlayerInfo, type SnapshotMsg, type TeamInfo, type TimedEvent } from '../../net/protocol';
+import { decodeDino, decodeStructure, type PlayerInfo, type RoundInfo, type SnapshotMsg, type StructureInfo, type TeamInfo, type TimedEvent } from '../../net/protocol';
 
 /** Render this many ticks behind the newest server state (100 ms = 2 snapshots of jitter room). */
 export const INTERP_TICKS = 6;
@@ -25,8 +25,18 @@ interface ClientProjectile {
  */
 export class Mirror {
   private snaps: SnapshotMsg[] = [];
+  /** Each snapshot's dinos, decoded once when it arrives (by id, in tuple order). */
+  private decoded = new WeakMap<SnapshotMsg, Map<number, Dino>>();
+  /** Render-ready dinos handed out by dinosAt, reused frame to frame (one object per id). */
+  private views = new Map<number, Dino>();
+  private viewList: Dino[] = [];
   private events: TimedEvent[] = [];
   private offset: number | null = null;
+  /** Snapshots leave players and teams out while unchanged: keep the last ones sent. */
+  private lastPlayers: PlayerInfo[] = [];
+  private lastTeams: TeamInfo[] = [];
+  private lastRound: RoundInfo = { phase: 'waiting', timer: 0, winner: null };
+  private structureCache = new WeakMap<SnapshotMsg, StructureInfo[]>();
   private projectiles = new Map<number, ClientProjectile>();
   /** Where projectiles ran out of range since the last takeSpent() (for splashes). */
   private spent: { x: number; y: number }[] = [];
@@ -34,6 +44,12 @@ export class Mirror {
   push(snap: SnapshotMsg, nowMs: number): void {
     if (this.snaps.length && snap.tick <= this.snaps[this.snaps.length - 1].tick) return;
     this.snaps.push(snap);
+    const byId = new Map<number, Dino>();
+    for (const t of snap.dinos) byId.set(t[0], decodeDino(t));
+    this.decoded.set(snap, byId);
+    if (snap.players) this.lastPlayers = snap.players;
+    if (snap.teams) this.lastTeams = snap.teams;
+    if (snap.round) this.lastRound = snap.round;
     if (this.snaps.length > MAX_SNAPSHOTS) this.snaps.shift();
     for (const e of snap.events) this.events.push(e);
 
@@ -76,31 +92,49 @@ export class Mirror {
     return due;
   }
 
-  /** Dinos interpolated to `tick`. */
+  /**
+   * Dinos interpolated to `tick`. The array and the objects in it are reused by the next
+   * call (each id keeps its object while it exists): read them, don't keep them.
+   */
   dinosAt(tick: number): Dino[] {
     const n = this.snaps.length;
-    if (!n) return [];
+    const out = this.viewList;
+    out.length = 0;
+    if (!n) return out;
     let i = n - 1;
     while (i > 0 && this.snaps[i - 1].tick > tick) i--;
     const s1 = this.snaps[i];
     const s0 = i > 0 ? this.snaps[i - 1] : s1;
     const span = s1.tick - s0.tick;
     const t = span > 0 ? Math.max(0, Math.min(1, (tick - s0.tick) / span)) : 1;
-    const prev = new Map(s0.dinos.map((d) => [d[0], d]));
-    return s1.dinos.map((tuple) => {
-      const b = decodeDino(tuple);
-      const at = prev.get(tuple[0]);
-      if (!at || t >= 1) return b;
-      const a = decodeDino(at);
-      b.x = b.px = lerp(a.x, b.x, t);
-      b.y = b.py = lerp(a.y, b.y, t);
-      b.heading = b.pheading = lerpAngle(a.heading, b.heading, t);
-      b.headYaw = lerp(a.headYaw, b.headYaw, t);
-      b.stride = lerp(a.stride, b.stride, t);
-      b.mounts.forEach((m, k) => (m.angle = lerp(a.mounts[k]?.angle ?? m.angle, m.angle, t)));
-      if (a.abilityT >= 0 && b.abilityT >= 0) b.abilityT = lerp(a.abilityT, b.abilityT, t);
-      return b;
-    });
+    const prev = this.decoded.get(s0)!;
+    const next = this.decoded.get(s1)!;
+    for (const b of next.values()) {
+      let v = this.views.get(b.id);
+      if (!v) {
+        v = { ...b, mounts: [] };
+        this.views.set(b.id, v);
+      }
+      // Copy the newer state, keeping v's own mounts (the decoded snapshot stays untouched).
+      const mounts = v.mounts;
+      Object.assign(v, b);
+      v.mounts = mounts;
+      mounts.length = b.mounts.length;
+      for (let k = 0; k < b.mounts.length; k++) (mounts[k] ??= { angle: 0, cooldown: 0 }).angle = b.mounts[k].angle;
+      const a = prev.get(b.id);
+      if (a && t < 1) {
+        v.x = v.px = lerp(a.x, b.x, t);
+        v.y = v.py = lerp(a.y, b.y, t);
+        v.heading = v.pheading = lerpAngle(a.heading, b.heading, t);
+        v.headYaw = lerp(a.headYaw, b.headYaw, t);
+        v.stride = lerp(a.stride, b.stride, t);
+        for (let k = 0; k < mounts.length; k++) mounts[k].angle = lerp(a.mounts[k]?.angle ?? b.mounts[k].angle, b.mounts[k].angle, t);
+        if (a.abilityT >= 0 && b.abilityT >= 0) v.abilityT = lerp(a.abilityT, b.abilityT, t);
+      }
+      out.push(v);
+    }
+    for (const id of this.views.keys()) if (!next.has(id)) this.views.delete(id);
+    return out;
   }
 
   projectilesAt(tick: number): Projectile[] {
@@ -128,10 +162,27 @@ export class Mirror {
   }
 
   players(): PlayerInfo[] {
-    return this.latest()?.players ?? [];
+    return this.lastPlayers;
   }
 
   teams(): TeamInfo[] {
-    return this.latest()?.teams ?? [];
+    return this.lastTeams;
+  }
+
+  round(): RoundInfo {
+    return this.lastRound;
+  }
+
+  /** Structures as of the newest snapshot at or before `tick` (they barely move: no interpolation). */
+  structuresAt(tick: number): StructureInfo[] {
+    let snap = this.snaps[0];
+    for (const s of this.snaps) if (s.tick <= tick) snap = s;
+    if (!snap) return [];
+    let list = this.structureCache.get(snap);
+    if (!list) {
+      list = snap.structures.map(decodeStructure);
+      this.structureCache.set(snap, list);
+    }
+    return list;
   }
 }

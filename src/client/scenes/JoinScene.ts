@@ -1,5 +1,8 @@
 import Phaser from 'phaser';
-import { NEW_TEAM, type LobbyInfo } from '../../net/protocol';
+import type { LobbyInfo, TeamInfo } from '../../net/protocol';
+import { RANDOM_MAP, mapsFor, type RoundSettings } from '../../sim/maps';
+import { TEAM_NAMES } from '../../sim/players';
+import { speciesLabel } from '../render/EliminatedPanel';
 import { pixelText } from '../render/Hud';
 import { TEAM_COLORS } from '../teams';
 import { clawCursor } from '../cursor';
@@ -11,10 +14,12 @@ interface Option {
   pick: () => void;
 }
 
-/** Join screen: choose an existing team or found a new one, then pick a species. */
+/** Join screen: the first rider sets up the round, then everyone picks a team and a species. */
 export class JoinScene extends Phaser.Scene {
   private objects: Phaser.GameObjects.GameObject[] = [];
   private team = '';
+  /** The round chosen on this screen (only when this client is the first rider). */
+  private setup: RoundSettings | undefined;
 
   constructor() {
     super('join');
@@ -22,6 +27,7 @@ export class JoinScene extends Phaser.Scene {
 
   create(data: { message?: string }): void {
     this.objects = [];
+    this.setup = undefined;
     this.cameras.main.setBackgroundColor('#10140c');
     // The canvas hides the OS cursor (the game draws a reticle); menus show a claw instead.
     this.input.setDefaultCursor(clawCursor());
@@ -65,29 +71,57 @@ export class JoinScene extends Phaser.Scene {
   }
 
   private teamStep(lobby: LobbyInfo, message?: string): void {
+    if (lobby.setup === null && !this.setup) return this.setupTeamsStep(lobby);
     this.title(message ?? `${lobby.players} RIDER${lobby.players === 1 ? '' : 'S'} IN THE WORLD`);
     if (!lobby.canJoin) {
       this.title('THE WORLD IS FULL - CLICK TO RETRY', () => this.scene.restart({}));
       return;
     }
+    const round = lobby.setup;
+    const mapName = round?.map === RANDOM_MAP ? 'RANDOM' : (lobby.maps.find((m) => m.id === round?.map)?.name ?? 'RANDOM');
     const options: Option[] = lobby.teams.map((t) => ({
-      label: `JOIN TEAM ${t.name} (${t.players})`,
+      label: t.eliminated ? `TEAM ${t.name} - OUT` : `JOIN TEAM ${t.name} (${t.players})`,
       tint: TEAM_COLORS[t.slot],
-      enabled: true,
+      enabled: !t.eliminated,
       pick: () => this.speciesStep(lobby, t.id),
     }));
-    options.push({ label: 'FOUND A NEW TEAM', tint: 0xf4f0e0, enabled: lobby.canCreateTeam, pick: () => this.speciesStep(lobby, NEW_TEAM) });
-    this.menu('CHOOSE YOUR TEAM', options, 'CLICK OR PRESS A NUMBER');
+    this.menu('CHOOSE YOUR TEAM', options, `MAP: ${mapName}  TEAMS: ${lobby.teams.length}`);
+  }
+
+  private setupTeamsStep(lobby: LobbyInfo): void {
+    this.title('YOU ARE THE FIRST RIDER - SET UP THE WORLD');
+    this.menu(
+      'HOW MANY TEAMS?',
+      [2, 3, 4].map((n) => ({ label: `${n} TEAMS`, tint: 0xf4f0e0, enabled: true, pick: () => this.setupMapStep(lobby, n) })),
+    );
+  }
+
+  private setupMapStep(lobby: LobbyInfo, n: number): void {
+    this.title('YOU ARE THE FIRST RIDER - SET UP THE WORLD');
+    const maps = mapsFor(n);
+    this.menu(
+      'CHOOSE A MAP',
+      maps.map((m) => ({
+        label: m.name,
+        tint: 0xf4f0e0,
+        enabled: true,
+        pick: () => {
+          this.setup = { teams: n, map: m.id };
+          const teams: TeamInfo[] = Array.from({ length: n }, (_, slot) => ({ id: `team${slot}`, slot, name: TEAM_NAMES[slot], base: { x: 0, y: 0 }, players: 0, eliminated: false }));
+          this.teamStep({ ...lobby, setup: this.setup, teams });
+        },
+      })),
+    );
   }
 
   private speciesStep(lobby: LobbyInfo, team: string): void {
     this.team = team;
     this.title('CHOOSE YOUR MOUNT');
     const options: Option[] = lobby.species.map((s) => ({
-      label: `${(s.kind === 'trex' ? 't-rex' : s.kind).padEnd(13)} ${s.diet.padEnd(9)}  HP ${String(s.hp).padStart(3)}  SPEED ${String(s.speed).padStart(3)}`,
+      label: speciesLabel(s),
       tint: 0xf4f0e0,
       enabled: true,
-      pick: () => this.scene.start('game', { team: this.team, kind: s.kind }),
+      pick: () => this.scene.start('game', { join: { team: this.team, kind: s.kind, ...(this.setup ? { setup: this.setup } : {}) } }),
     }));
     this.menu('W/S MOVE  A/D TURN  MOUSE AIM  CLICK FIRE  R-CLICK ABILITY  TAB SCORES', options);
   }

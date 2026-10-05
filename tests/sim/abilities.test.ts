@@ -10,7 +10,7 @@ import { makeWildAi } from '../../src/sim/ai';
 
 /** Open ground with no obstacles or food. */
 function arena(): GameState {
-  const s = createMatch(11, { cols: 60, rows: 60, water: false });
+  const s = createMatch(11, { cols: 60, rows: 60, water: false }, { camps: false });
   s.world.obstacles = [];
   s.world.grid = s.world.grid.map(() => []);
   s.food = [];
@@ -86,14 +86,14 @@ describe('velociraptor leap', () => {
     expect(uses).toBe(2);
   });
 
-  it('does not hurt riders sheltering in their own base camp', () => {
+  it('hurts riders in their own base camp (no safe zone)', () => {
     const s = arena();
     const other = createTeam(s)!;
     const { d, cmd } = rider(s, 'velociraptor', other.base.x - 60, other.base.y);
     const safe = createDino(s, 'triceratops', other.id, other.base.x, other.base.y, 0, 999);
     run(s, 40, () => cmd({ x: other.base.x, y: other.base.y }, true), () => (safe.meleeCooldown = 999));
     expect(Math.hypot(d.x - safe.x, d.y - safe.y)).toBeLessThan(40);
-    expect(safe.hp).toBe(safe.maxHp);
+    expect(safe.hp).toBeLessThan(safe.maxHp);
   });
 });
 

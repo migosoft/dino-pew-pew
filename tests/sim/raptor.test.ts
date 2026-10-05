@@ -4,9 +4,10 @@ import { getDino } from '../../src/sim/defs/dinos';
 import { getWeapon } from '../../src/sim/defs/weapons';
 import { createMatch, step } from '../../src/sim/sim';
 import { addPlayer, createTeam } from '../../src/sim/players';
+import { SMALL } from '../helpers';
 
 function setup() {
-  const s = createMatch(7);
+  const s = createMatch(7, SMALL);
   const team = createTeam(s)!;
   const p = addPlayer(s, team.id, 'velociraptor', 'A');
   const d = s.dinos.find((x) => x.playerId === p.id)!;

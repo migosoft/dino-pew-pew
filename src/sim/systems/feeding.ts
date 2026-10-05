@@ -1,5 +1,8 @@
 import type { Dino, DinoDef, FoodKind, FoodSource, GameState } from '../types';
 import { getDino } from '../defs/dinos';
+import { foodNear } from '../spatial';
+
+const nearFood: number[] = [];
 
 /** Per-kind food tuning. Carcasses hold more and cost 1/4 food per HP: a steady supply for carnivores. */
 export const FOOD: Record<FoodKind, { maxFood: number; costPerHp: number; regrowPerSec: number }> = {
@@ -16,6 +19,8 @@ export const EAT_MAX_SPEED = 12;
 export const SMALL_CARCASS_FRACTION = 0.6;
 /** Carcass ids live in their own range so they never collide with world plant ids. */
 export const CARCASS_ID_BASE = 1_000_000;
+/** An untouched carcass rots away completely in this many seconds. */
+export const CARCASS_DECAY_SECS = 120;
 
 /** The diet rule, in one place: what a species can eat. */
 export function canEat(def: DinoDef, kind: FoodKind): boolean {
@@ -65,13 +70,16 @@ export function findFood(state: GameState, d: Dino): FoodSource | undefined {
   const def = getDino(d.kind);
   let best: FoodSource | undefined;
   let bestD = Infinity;
-  for (const f of state.food) {
+  let bestI = -1;
+  for (const i of foodNear(state, d.x, d.y, def.radius, nearFood)) {
+    const f = state.food[i];
     if (f.food <= 0 || !canEat(def, f.kind)) continue;
     const reach = f.reach + def.radius;
     const dd = (f.x - d.x) ** 2 + (f.y - d.y) ** 2;
-    if (dd <= reach * reach && dd < bestD) {
+    if (dd <= reach * reach && (dd < bestD || (dd === bestD && i < bestI))) {
       best = f;
       bestD = dd;
+      bestI = i;
     }
   }
   return best;
@@ -91,12 +99,17 @@ export function feed(state: GameState, d: Dino, firing: boolean, dt: number): vo
   d.eating = true;
 }
 
-/** Plants regrow after a pause; eaten-up carcasses disappear. */
+/** Plants regrow after a pause; carcasses rot, and eaten-up or rotten ones disappear. */
 export function updateFood(state: GameState, dt: number): void {
+  let gone = false;
   for (const f of state.food) {
-    if (f.kind === 'carcass') continue;
+    if (f.kind === 'carcass') {
+      f.food -= (f.maxFood / CARCASS_DECAY_SECS) * dt;
+      if (f.food <= 0) gone = true;
+      continue;
+    }
     f.idle += dt;
     if (f.idle >= REGROW_DELAY && f.food < f.maxFood) f.food = Math.min(f.maxFood, f.food + FOOD[f.kind].regrowPerSec * dt);
   }
-  if (state.food.some((f) => f.kind === 'carcass' && f.food <= 0)) state.food = state.food.filter((f) => f.kind !== 'carcass' || f.food > 0);
+  if (gone) state.food = state.food.filter((f) => f.kind !== 'carcass' || f.food > 0);
 }

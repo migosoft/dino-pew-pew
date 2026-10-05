@@ -3,22 +3,24 @@
 // Inputs carry a sequence number that snapshots acknowledge, so client-side
 // prediction/reconciliation can be added later without changing the protocol shape.
 
-import type { Dino, GameEvent, GameState, InputCommand, Vec2 } from '../sim/types';
+import type { Dino, FoodSource, GameEvent, GameState, InputCommand, RoundPhase, Structure, StructureKind, Vec2 } from '../sim/types';
+import { validSettings, type MapInfo, type RoundSettings } from '../sim/maps';
+import { fieldUp } from '../sim/camp';
 import { getDino } from '../sim/defs/dinos';
 import { findTeam } from '../sim/world';
 import { clamp } from '../sim/math';
 import { teamName } from '../sim/players';
 import { UPGRADE_STATS, type UpgradeStat, type Upgrades } from '../sim/upgrades';
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 4;
 /** The server broadcasts a snapshot every N simulation ticks (60 Hz / 3 = 20 Hz). */
 export const SNAPSHOT_EVERY = 3;
-export const NEW_TEAM = 'new';
 
 // ---------------------------------------------------------------- client -> server
 
 export type ClientMsg =
-  | { t: 'join'; team: string; kind: string }
+  | { t: 'join'; team: string; kind: string; setup?: RoundSettings }
+  | { t: 'switch'; team: string; kind: string }
   | { t: 'input'; seq: number; input: InputCommand }
   | { t: 'buy'; stat: UpgradeStat };
 
@@ -33,9 +35,13 @@ export function parseClientMsg(raw: string): ClientMsg | null {
   if (typeof m !== 'object' || m === null) return null;
   const o = m as Record<string, unknown>;
   const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
-  if (o.t === 'join') {
+  if (o.t === 'join' || o.t === 'switch') {
     if (typeof o.team !== 'string' || typeof o.kind !== 'string' || o.team.length > 32 || o.kind.length > 32) return null;
-    return { t: 'join', team: o.team, kind: o.kind };
+    if (o.t === 'switch') return { t: 'switch', team: o.team, kind: o.kind };
+    if (o.setup === undefined) return { t: 'join', team: o.team, kind: o.kind };
+    const st = o.setup as Record<string, unknown> | null;
+    const setup = st && typeof st === 'object' ? validSettings(st.teams, st.map) : null;
+    return setup ? { t: 'join', team: o.team, kind: o.kind, setup } : null;
   }
   if (o.t === 'buy') {
     return UPGRADE_STATS.includes(o.stat as UpgradeStat) ? { t: 'buy', stat: o.stat as UpgradeStat } : null;
@@ -74,6 +80,8 @@ export interface TeamInfo {
   name: string;
   base: Vec2;
   players: number;
+  /** True once the team's camp is destroyed and it has no riders left. */
+  eliminated: boolean;
 }
 
 export interface PlayerInfo {
@@ -98,8 +106,12 @@ export interface SpeciesInfo {
 
 export interface LobbyInfo {
   protocol: number;
+  /** The running round's settings, or null while the server is empty (the first player picks them). */
+  setup: RoundSettings | null;
+  /** Maps offered for each team count. */
+  maps: MapInfo[];
+  phase: RoundPhase | null;
   teams: TeamInfo[];
-  canCreateTeam: boolean;
   canJoin: boolean;
   players: number;
   maxPlayers: number;
@@ -117,6 +129,14 @@ export interface WelcomeMsg {
   tickRate: number;
   /** Current food of every plant that is not full. */
   plants: PlantTuple[];
+  /** Every carcass in the world right now (snapshots then send only changes). */
+  carcasses: CarcassTuple[];
+  /** Id of the map recipe the round is played on. */
+  map: string;
+  /** Number of teams in this round. */
+  teams: number;
+  /** World size in tiles (the world is square). */
+  tiles: number;
 }
 
 /** Compact dino encoding: positions in 1/10 px, angles in milliradians. */
@@ -146,6 +166,28 @@ export type DinoTuple = [
 export type CarcassTuple = [id: number, species: string, x: number, y: number, heading: number, food: number, maxFood: number];
 /** Remaining food of a world plant (plants are generated client-side from the seed). */
 export type PlantTuple = [id: number, food: number];
+/** A camp or tower. kind 0 = camp, 1 = tower. flags bit 0: hit flash, bit 1: force field up. */
+export type StructureTuple = [id: number, team: string, kind: 0 | 1, x: number, y: number, hp: number, maxHp: number, angle: number, flags: number, rebuildIn: number];
+
+export interface StructureInfo {
+  id: number;
+  team: string;
+  kind: StructureKind;
+  x: number;
+  y: number;
+  hp: number;
+  maxHp: number;
+  angle: number;
+  hitFlash: boolean;
+  field: boolean;
+  rebuildIn: number;
+}
+
+export interface RoundInfo {
+  phase: RoundPhase;
+  timer: number;
+  winner: string | null;
+}
 
 export interface SnapshotMsg {
   t: 'snap';
@@ -153,13 +195,21 @@ export interface SnapshotMsg {
   /** Last input sequence number the server applied for the receiving player. */
   ack: number;
   dinos: DinoTuple[];
-  players: PlayerInfo[];
-  teams: TeamInfo[];
+  /** Left out when unchanged since the previous snapshot. */
+  players?: PlayerInfo[];
+  /** Left out when unchanged since the previous snapshot. */
+  teams?: TeamInfo[];
   events: TimedEvent[];
-  /** All current carcasses. */
+  /** Carcasses that appeared or whose (rounded) food changed since the previous snapshot. */
   carcasses: CarcassTuple[];
+  /** Ids of carcasses eaten up or rotted away since the previous snapshot. */
+  gone: number[];
   /** Plants whose (rounded) food level changed since the previous snapshot. */
   plants: PlantTuple[];
+  /** Every camp and tower. */
+  structures: StructureTuple[];
+  /** Left out when unchanged since the previous snapshot. */
+  round?: RoundInfo;
 }
 
 /** Fatal: the connection is closed after this. */
@@ -250,6 +300,20 @@ export function decodeDino(t: DinoTuple): Dino {
   return d;
 }
 
+export function encodeStructure(state: GameState, s: Structure): StructureTuple {
+  const field = s.kind === 'camp' && s.hp > 0 && fieldUp(state, s.team);
+  return [s.id, s.team, s.kind === 'camp' ? 0 : 1, Math.round(s.x), Math.round(s.y), Math.ceil(s.hp), s.maxHp, q(s.angle, 1000), (s.hitFlash > 0 ? 1 : 0) | (field ? 2 : 0), Math.ceil(s.rebuildIn)];
+}
+
+export function decodeStructure(t: StructureTuple): StructureInfo {
+  const [id, team, kind, x, y, hp, maxHp, angle, flags, rebuildIn] = t;
+  return { id, team, kind: kind === 0 ? 'camp' : 'tower', x, y, hp, maxHp, angle: angle / 1000, hitFlash: (flags & 1) !== 0, field: (flags & 2) !== 0, rebuildIn };
+}
+
+export function roundInfo(state: GameState): RoundInfo {
+  return { phase: state.round.phase, timer: Math.ceil(state.round.timer), winner: state.round.winner };
+}
+
 export function teamInfos(state: GameState): TeamInfo[] {
   return state.teams.map((t) => ({
     id: t.id,
@@ -257,6 +321,7 @@ export function teamInfos(state: GameState): TeamInfo[] {
     name: teamName(t),
     base: t.base,
     players: state.players.filter((p) => p.team === t.id).length,
+    eliminated: t.eliminated,
   }));
 }
 
@@ -267,7 +332,8 @@ export function playerInfos(state: GameState): PlayerInfo[] {
     team: p.team,
     kind: p.kind,
     dinoId: p.dinoId,
-    respawn: Math.max(0, Math.round(p.respawn * 10) / 10),
+    // Whole seconds: the list then changes once a second while someone waits, not every tick.
+    respawn: Math.max(0, Math.ceil(p.respawn)),
     kills: p.kills,
     deaths: p.deaths,
     money: p.money,
@@ -275,10 +341,12 @@ export function playerInfos(state: GameState): PlayerInfo[] {
   }));
 }
 
+export function encodeCarcass(f: FoodSource): CarcassTuple {
+  return [f.id, f.species ?? '', q(f.x, 1), q(f.y, 1), q(f.heading ?? 0, 100), Math.ceil(f.food), Math.round(f.maxFood)];
+}
+
 export function carcassTuples(state: GameState): CarcassTuple[] {
-  return state.food
-    .filter((f) => f.kind === 'carcass')
-    .map((f) => [f.id, f.species ?? '', q(f.x, 1), q(f.y, 1), q(f.heading ?? 0, 100), Math.ceil(f.food), Math.round(f.maxFood)]);
+  return state.food.filter((f) => f.kind === 'carcass').map(encodeCarcass);
 }
 
 /** Rounded food level of every plant, for change detection. */
@@ -288,17 +356,35 @@ export function plantLevels(state: GameState): Map<number, number> {
   return m;
 }
 
-/** Snapshot body without the per-recipient `ack`. `plants` = changed plant levels. */
-export function buildSnapshot(state: GameState, events: TimedEvent[], plants: PlantTuple[] = []): Omit<SnapshotMsg, 'ack'> {
+/** What changed since the previous snapshot. Anything not given is sent in full (players, teams, carcasses) or empty. */
+export interface SnapshotChanges {
+  plants?: PlantTuple[];
+  carcasses?: CarcassTuple[];
+  gone?: number[];
+  /** null: unchanged, left out of the snapshot. */
+  players?: PlayerInfo[] | null;
+  teams?: TeamInfo[] | null;
+  /** null: unchanged, left out of the snapshot. */
+  round?: RoundInfo | null;
+}
+
+/** Snapshot body without the per-recipient `ack`. */
+export function buildSnapshot(state: GameState, events: TimedEvent[], changes: SnapshotChanges = {}): Omit<SnapshotMsg, 'ack'> {
+  const players = changes.players === undefined ? playerInfos(state) : changes.players;
+  const teams = changes.teams === undefined ? teamInfos(state) : changes.teams;
+  const round = changes.round === undefined ? roundInfo(state) : changes.round;
   return {
     t: 'snap',
     tick: state.tick,
     dinos: state.dinos.filter((d) => d.alive).map(encodeDino),
-    players: playerInfos(state),
-    teams: teamInfos(state),
+    ...(players ? { players } : {}),
+    ...(teams ? { teams } : {}),
     events,
-    carcasses: carcassTuples(state),
-    plants,
+    carcasses: changes.carcasses ?? carcassTuples(state),
+    gone: changes.gone ?? [],
+    plants: changes.plants ?? [],
+    structures: state.structures.map((s) => encodeStructure(state, s)),
+    ...(round ? { round } : {}),
   };
 }
 

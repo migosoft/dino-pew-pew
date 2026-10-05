@@ -2,7 +2,8 @@ import type { GameState, InputCommand } from './types';
 import { getDino } from './defs/dinos';
 import { makeRng } from './rng';
 import { generateWorld, type WorldGenOptions } from './worldgen';
-import { updatePlayers } from './players';
+import { createTeam, updatePlayers } from './players';
+import { updateRound } from './rounds';
 import { applyCurrent, moveDino, terrainSpeedFactor } from './systems/movement';
 import { resolveDinoContacts, resolveObstacles } from './systems/collision';
 import { selectFiringMounts, selectSideMounts, updateAim } from './systems/aiming';
@@ -10,14 +11,20 @@ import { fireMounts } from './systems/firing';
 import { updateProjectiles } from './systems/projectiles';
 import { feed, updateFood } from './systems/feeding';
 import { updateMelee } from './systems/melee';
+import { updateStructures } from './systems/structures';
 import { tryStartAbility, updateAbility } from './systems/abilities';
-import { isAirborne } from './world';
+import { forgetDinoIndex, isAirborne } from './world';
 import { computeWildCommand } from './ai';
 import { populateWild, updateEcology } from './ecology';
+import { buildDinoGrid } from './spatial';
 
 export interface MatchOptions {
   /** Spawn and maintain wild dinosaurs (default false; the game server turns it on). */
   wildlife?: boolean;
+  /** Create this many teams (with camps) right away. Default 0: tests add teams with createTeam. */
+  teams?: number;
+  /** Camps, towers and rounds (default true). Old unit tests about other systems turn them off. */
+  camps?: boolean;
 }
 
 /** A fresh, empty persistent match. Teams and players are added as people join. */
@@ -30,13 +37,17 @@ export function createMatch(seed: number, worldOpts?: WorldGenOptions, opts: Mat
     food: world.food.map((f) => ({ ...f })),
     dinos: [],
     projectiles: [],
+    structures: [],
     events: [],
     nextId: 1,
     teams: [],
     players: [],
     wildlife: opts.wildlife ?? false,
     wildSpawnTimer: { t: 0 },
+    camps: opts.camps ?? true,
+    round: { phase: 'waiting', timer: 0, winner: null },
   };
+  for (let i = 0; i < (opts.teams ?? 0); i++) createTeam(state);
   if (state.wildlife) populateWild(state);
   return state;
 }
@@ -50,6 +61,9 @@ export function step(state: GameState, inputs: Map<number, InputCommand>, dt: nu
   state.events = [];
   state.tick++;
   updatePlayers(state, dt);
+  updateRound(state, dt);
+  // For the wild AI's neighbour searches below.
+  buildDinoGrid(state);
 
   for (const d of state.dinos) {
     if (!d.alive) continue;
@@ -94,9 +108,15 @@ export function step(state: GameState, inputs: Map<number, InputCommand>, dt: nu
 
   resolveDinoContacts(state);
   updateMelee(state, dt);
+  updateStructures(state, dt);
   for (const d of state.dinos) if (d.alive && !isAirborne(d)) resolveObstacles(state, d);
   updateProjectiles(state, dt);
   updateFood(state, dt);
-  state.dinos = state.dinos.filter((d) => d.alive);
+  let n = 0;
+  for (const d of state.dinos) if (d.alive) state.dinos[n++] = d;
+  if (n < state.dinos.length) {
+    state.dinos.length = n;
+    forgetDinoIndex(state);
+  }
   if (state.wildlife) updateEcology(state, dt, state.wildSpawnTimer);
 }

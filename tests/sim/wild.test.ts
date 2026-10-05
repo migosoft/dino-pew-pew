@@ -10,6 +10,7 @@ import { isHostile, updateMelee } from '../../src/sim/systems/melee';
 import { makeWildAi } from '../../src/sim/ai';
 import { SPAWN_AWAY_FROM_RIDERS, wildTarget } from '../../src/sim/ecology';
 import { BASE_CLEAR } from '../../src/sim/worldgen';
+import { SMALL } from '../helpers';
 
 const DT = 1 / 60;
 const run = (s: GameState, seconds: number, inputs = new Map<number, InputCommand>()) => {
@@ -73,7 +74,7 @@ describe('melee', () => {
 
 describe('wild dinosaurs', () => {
   it('populate the world on match start, away from base camps, and never fire weapons', () => {
-    const s = createMatch(21, undefined, { wildlife: true });
+    const s = createMatch(21, SMALL, { wildlife: true });
     const w = s.dinos.filter((d) => d.team === WILD_TEAM);
     expect(w.length).toBe(wildTarget(0));
     expect(w.filter((d) => getDino(d.kind).diet === 'herbivore').length).toBeGreaterThan(w.length / 2);
@@ -84,7 +85,7 @@ describe('wild dinosaurs', () => {
   });
 
   it('top up toward a target that grows with players, spawning away from riders', () => {
-    const s = createMatch(22, undefined, { wildlife: true });
+    const s = createMatch(22, SMALL, { wildlife: true });
     const t0 = createTeam(s)!;
     const players = [1, 2, 3].map((i) => addPlayer(s, t0.id, 'triceratops', `P${i}`));
     run(s, 30);
@@ -152,5 +153,11 @@ describe('wild dinosaurs', () => {
     s.food.push({ id: 5, kind: 'carcass', x: 700, y: 640, reach: 13, food: 240, maxFood: 240, costPerHp: 0.25, idle: 0, variant: 0, species: 'triceratops', heading: 0 });
     run(s, 8);
     expect(raptor.hp).toBeGreaterThan(40);
+  });
+
+  it('scales the wild population with map area, capped at 2.5x', () => {
+    expect(wildTarget(0)).toBe(28);
+    expect(wildTarget(0, 8192 * 8192)).toBe(70);
+    expect(wildTarget(100, 8192 * 8192)).toBe(275);
   });
 });

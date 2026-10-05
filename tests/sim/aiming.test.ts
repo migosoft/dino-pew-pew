@@ -7,6 +7,7 @@ import { addPlayer, createTeam } from '../../src/sim/players';
 import { createDino } from '../../src/sim/world';
 import { mountFrame, selectFiringMounts, updateAim } from '../../src/sim/systems/aiming';
 import { fireMounts } from '../../src/sim/systems/firing';
+import { SMALL } from '../helpers';
 
 // A test-only broadside dino: two back mounts facing left and right, no head.
 const SIDE_DINO: DinoDef = {
@@ -113,7 +114,7 @@ describe('broadside dino aiming', () => {
 describe('simulation step', () => {
   it('moves a rider forward with throttle and is deterministic', () => {
     const run = () => {
-      const s = createMatch(42);
+      const s = createMatch(42, SMALL);
       const team = createTeam(s)!;
       const p = addPlayer(s, team.id, 'triceratops', 'A');
       const cmd: InputCommand = { throttle: 1, turn: 0.3, aimWorld: { x: 0, y: 0 }, fire: true };

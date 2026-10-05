@@ -7,10 +7,11 @@ import { addPlayer, createTeam } from '../../src/sim/players';
 import { BASE_DRY, RIVER_SPEED, generateWorld } from '../../src/sim/worldgen';
 import { flowAt, isRiver } from '../../src/sim/world';
 import { tryStartAbility } from '../../src/sim/systems/abilities';
+import { SMALL } from '../helpers';
 
 /** A dry, empty map that is one big river flowing south (+y) at `speed` px/s. */
 function river(speed: number, tile: number = Tile.Shallow): GameState {
-  const s = createMatch(4, { cols: 60, rows: 60, water: false });
+  const s = createMatch(4, { cols: 60, rows: 60, water: false }, { camps: false });
   s.world.obstacles = [];
   s.world.grid = s.world.grid.map(() => []);
   s.food = [];
@@ -33,8 +34,8 @@ const idle: InputCommand = { throttle: 0, turn: 0, aimWorld: { x: 900, y: 300 },
 
 describe('river currents', () => {
   it('flow only in rivers: never in lakes, on land or near camps, and the same for every run', () => {
-    const w = generateWorld(7);
-    const again = generateWorld(7);
+    const w = generateWorld(7, SMALL);
+    const again = generateWorld(7, SMALL);
     expect(again.flow).toEqual(w.flow);
     let rivers = 0;
     for (let i = 0; i < w.cols * w.rows; i++) {
@@ -59,7 +60,7 @@ describe('river currents', () => {
   });
 
   it('a river flows one way along its length', () => {
-    const w = generateWorld(7);
+    const w = generateWorld(7, SMALL);
     let same = 0;
     let opposite = 0;
     for (let y = 0; y < w.rows; y++) {

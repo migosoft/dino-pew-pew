@@ -4,10 +4,11 @@ import { createMatch, step } from '../../src/sim/sim';
 import { addPlayer, createTeam } from '../../src/sim/players';
 import { SNAPSHOT_EVERY, buildSnapshot, type SnapshotMsg, type TimedEvent } from '../../src/net/protocol';
 import { INTERP_TICKS, Mirror } from '../../src/client/net/Mirror';
+import { SMALL } from '../helpers';
 
 /** Run a server-side match and feed its snapshots into a client mirror with fake timing. */
 function simulate(ticks: number) {
-  const s = createMatch(9);
+  const s = createMatch(9, SMALL);
   const p = addPlayer(s, createTeam(s)!.id, 'triceratops', 'A');
   const mirror = new Mirror();
   const inputs = new Map([[p.id, { throttle: 1, turn: 0.2, aimWorld: { x: 0, y: 0 }, fire: true }]]);
@@ -41,6 +42,18 @@ describe('client mirror', () => {
     }
   });
 
+  it('gives the same result for a tick however often and in whatever order it is asked', () => {
+    const { mirror } = simulate(120);
+    const at = (tick: number) => {
+      const d = mirror.dinosAt(tick)[0];
+      return { x: d.x, y: d.y, heading: d.heading, mounts: d.mounts.map((m) => m.angle) };
+    };
+    const first = at(101.5);
+    at(100);
+    at(104.5);
+    expect(at(101.5)).toEqual(first);
+  });
+
   it('spawns projectiles from shot events and moves them like the server', () => {
     const { s, mirror } = simulate(90);
     mirror.takeEvents(s.tick);
@@ -52,4 +65,18 @@ describe('client mirror', () => {
       expect(Math.hypot(p.x - server.x, p.y - server.y)).toBeLessThan(0.5);
     }
   });
+});
+
+it('keeps the last round info and decodes structures', () => {
+  const s = createMatch(9, SMALL, { teams: 2 });
+  const m = new Mirror();
+  s.round.phase = 'countdown';
+  s.round.timer = 7;
+  m.push({ ...buildSnapshot(s, []), ack: 0 }, 0);
+  expect(m.round()).toMatchObject({ phase: 'countdown', timer: 7 });
+  s.tick = 3;
+  m.push({ ...buildSnapshot(s, [], { round: null }), ack: 0 }, 50);
+  expect(m.round()).toMatchObject({ phase: 'countdown', timer: 7 });
+  expect(m.structuresAt(3)).toHaveLength(12);
+  expect(m.structuresAt(3)[0].kind).toBe('camp');
 });

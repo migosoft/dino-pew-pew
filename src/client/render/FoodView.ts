@@ -3,6 +3,7 @@ import type { FoodSource } from '../../sim/types';
 import type { CarcassTuple, PlantTuple } from '../../net/protocol';
 import { frameForAngle } from './textures/pixel';
 import { CARCASS_DIRS } from './textures';
+import { BucketGrid } from './BucketGrid';
 import { DEPTH } from './depth';
 import { CARCASS_KINDS } from './textures/foodArt';
 
@@ -19,17 +20,29 @@ function stageOf(food: number, maxFood: number): 0 | 1 | 2 {
  */
 export class FoodView {
   private plants = new Map<number, { src: FoodSource; sprite: Phaser.GameObjects.Image; stage: number }>();
+  private buckets: BucketGrid<Phaser.GameObjects.Image[]>;
   private carcasses = new Map<number, { sprite: Phaser.GameObjects.Image; stage: number; species: string }>();
 
-  constructor(private scene: Phaser.Scene, food: FoodSource[]) {
+  constructor(private scene: Phaser.Scene, food: FoodSource[], worldWidth: number, worldHeight: number) {
+    this.buckets = new BucketGrid(worldWidth, worldHeight);
     for (const f of food) {
       if (f.kind !== 'bush' && f.kind !== 'fern') continue;
       const src = { ...f };
-      const sprite = scene.add.image(Math.round(f.x), Math.round(f.y), `${f.kind}_${f.variant}_0`);
+      const sprite = scene.add.image(Math.round(f.x), Math.round(f.y), `${f.kind}_${f.variant}_0`).setVisible(false);
+      this.buckets.at(f.x, f.y, () => []).push(sprite);
       // Bushes stand up (y-sorted); fern patches hug the ground.
       sprite.setDepth(f.kind === 'bush' ? DEPTH.world + f.y : DEPTH.decal + 1);
       this.plants.set(f.id, { src, sprite, stage: 0 });
     }
+  }
+
+  /** Show only the plants in buckets near the view. */
+  cull(view: Phaser.Geom.Rectangle): void {
+    this.buckets.update(
+      view,
+      (b) => b.forEach((s) => s.setVisible(true)),
+      (b) => b.forEach((s) => s.setVisible(false)),
+    );
   }
 
   setPlants(levels: PlantTuple[]): void {
@@ -45,10 +58,9 @@ export class FoodView {
     }
   }
 
-  setCarcasses(list: CarcassTuple[]): void {
-    const seen = new Set<number>();
+  /** Add new carcasses and update changed ones. */
+  upsertCarcasses(list: CarcassTuple[]): void {
     for (const [id, species, x, y, heading, food, maxFood] of list) {
-      seen.add(id);
       const stage = stageOf(food, maxFood);
       const kind = (CARCASS_KINDS as readonly string[]).includes(species) ? species : 'triceratops';
       let c = this.carcasses.get(id);
@@ -61,9 +73,11 @@ export class FoodView {
         c.sprite.setTexture(`carcass_${kind}_${stage}`, c.sprite.frame.name);
       }
     }
-    for (const [id, c] of this.carcasses) {
-      if (seen.has(id)) continue;
-      c.sprite.destroy();
+  }
+
+  removeCarcasses(ids: number[]): void {
+    for (const id of ids) {
+      this.carcasses.get(id)?.sprite.destroy();
       this.carcasses.delete(id);
     }
   }

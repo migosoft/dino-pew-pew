@@ -1,9 +1,9 @@
 # Dinoriders
 
-Top-down pixel-retro multiplayer shooter: ride an armed dinosaur through a persistent,
-randomly generated prehistoric world. Open the URL, join an existing team or found a new one
-(up to 4 teams), and fight the other teams' riders. Each team has a base camp: you respawn
-there and nobody can hurt you inside it.
+Top-down pixel-retro multiplayer shooter: ride an armed dinosaur through an 8192 px prehistoric
+world and **destroy the other teams' camps**. Every team has a camp building defended by five
+towers. A team whose camp falls is out; the last camp standing wins the round, and after 15 s a
+new round starts with the same settings.
 
 ```
 npm install
@@ -12,6 +12,21 @@ npm test        # unit + server tests
 npm run build   # type-check, client bundle in dist/, server bundle in dist-server/
 npm start       # run the production server (serves dist/ on :8080)
 ```
+
+### Setting up a round
+
+The first rider on an empty server picks the number of teams (2, 3 or 4) and a map: **RANDOM**
+(a fresh random world each round) or a fixed map made for that team count. The only fixed map so
+far is **CROSSING**, for 2 teams. Everyone after that just picks a team and a mount. When the last
+rider leaves, the settings are cleared and the next arrival sets up again.
+
+To fix the settings on the server instead (no setup screen, never reset), set environment variables:
+
+```
+TEAMS=2 MAP=crossing npm start    # TEAMS: 2, 3 or 4; MAP: random or a map for that many teams
+```
+
+Other variables: `PORT` (default 8080), `SEED` (world seed of the first random round), `STATIC_DIR`.
 
 ### Docker
 
@@ -28,6 +43,26 @@ your mount's ability (15 s cooldown), E opens the shop (in your base camp), hold
 
 ## Gameplay
 
+- **Rounds:**
+  - The camps can't be damaged until every team has at least one rider; then a 5 s countdown
+    starts the round.
+  - A team is out when its camp building is destroyed, or when it has had no riders for 30 s
+    during a round. Its riders die and can't respawn: they can join a surviving team (pick a
+    mount on the panel that opens) or press S to spectate with a free camera (WASD).
+  - When one team is left, it wins. The result shows for 15 s, then a new world is built and
+    everyone plays on in the same team slot. Money, upgrades and scores start again from zero.
+- **Camps and towers:**
+  - Each camp has a building (3000 HP) in the middle and five towers (400 HP each) on a ring
+    around it. Towers turn and shoot at the nearest enemy rider, or at an aggressive wild dino.
+  - While at least 3 towers stand, a **force field** covers the building and blocks every hit
+    on it: take out three towers first. Towers never have a field. A destroyed tower rebuilds
+    after 90 s, unless its team is out.
+  - Bullets, melee and every ability damage enemy structures; wild dinos never do, and your own
+    team's bullets fly through your own camp. Destroying a tower pays $60; the final blow on a camp $300.
+  - Your camp is no longer a safe zone. It is still where you respawn and shop, and it heals you
+    (8 HP/s once you haven't been hit for 3 s) while its building stands.
+  - The HUD shows every team's camp HP and standing towers at the top, a feed of fallen towers
+    and camps, and the round state in the middle of the screen.
 - **Mounts:**
   - Triceratops: herbivore, tough, armored, a heavy cannon on each flank.
   - Velociraptor: carnivore, fast, small, a light gun on each side of its metal saddle.
@@ -50,7 +85,9 @@ your mount's ability (15 s cooldown), E opens the shop (in your base camp), hold
 
   Wild dinos use them too, now and then. Every dino also has a natural melee attack (horns,
   claws, stamping feet, jaws) against whatever is right in front of it.
-- **Water:** lakes and winding rivers cross the 4096 px world.
+- **Water:** lakes and winding rivers cross the 8192 px world. On CROSSING, two rivers and a
+  central lake split the map; the rivers have two fords each and the lake a shallow causeway on
+  the line between the camps.
   - Shallow water, at the shores and at fords, doesn't slow anyone down.
   - Deep water slows small dinos a lot and big ones only a little: the Velociraptor keeps 25% of
     its speed, the Triceratops 70%, the T-Rex 75%, the Brontosaurus 90%. A leap passes over it.
@@ -61,8 +98,9 @@ your mount's ability (15 s cooldown), E opens the shop (in your base camp), hold
     wade straight in.
   - The water has little waves, streaks that run downstream in rivers, fish shadows in the
     lakes that dart away, and every footstep leaves a ripple.
-- **Wild dinosaurs** without riders roam the world (more when more riders are online).
-  Herbivores graze and charge (or flee from) attackers; raptors hunt riders outside their camp.
+- **Wild dinosaurs** without riders roam the world (more when more riders are online, and up
+  to 2.5x as many as on the old 4096 px map). Herbivores graze and charge (or flee from)
+  attackers; raptors hunt riders outside their camp. Wild dinos steer around camps.
 - **Eating heals:** stand still next to food. Herbivores eat bushes and ferns — and trees, if
   they are large; carnivores eat carcasses. Plants regrow; carcasses don't, but they last about
   4x longer. Every kill leaves a carcass, and a few old ones lie around the world.
@@ -73,7 +111,8 @@ your mount's ability (15 s cooldown), E opens the shop (in your base camp), hold
 ## How it's built
 
 - `src/sim/` — deterministic, Phaser-free simulation (fixed 60 Hz `step()`, seeded RNG).
-  Runs only on the server, which is authoritative.
+  Runs only on the server, which is authoritative. Camps and towers are in `camp.ts` and
+  `systems/structures.ts`, rounds in `rounds.ts`, fixed maps in `maps/`.
 - `src/net/` — wire protocol shared by server and client: input/join validation, compact
   snapshot encoding. Inputs carry sequence numbers that snapshots acknowledge (ready for
   client-side prediction later).
@@ -82,6 +121,7 @@ your mount's ability (15 s cooldown), E opens the shop (in your base camp), hold
 - `src/client/` — Phaser client. Regenerates the terrain from the world seed, renders the
   server state ~100 ms in the past (interpolated), simulates straight-flying projectiles from
   their spawn events. All art is generated in code at boot, pre-rotated into 64 directions.
+  The ground is drawn in 256 px chunks around the camera, a few per frame.
 
 Add `?debug` to the URL to expose `window.dinoriders` (client state) for debugging.
 

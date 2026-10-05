@@ -9,7 +9,7 @@ import { makeWildAi } from '../../src/sim/ai';
 
 /** Open dry ground with no obstacles or food. */
 function arena(): GameState {
-  const s = createMatch(12, { cols: 60, rows: 60, water: false });
+  const s = createMatch(12, { cols: 60, rows: 60, water: false }, { camps: false });
   s.world.obstacles = [];
   s.world.grid = s.world.grid.map(() => []);
   s.food = [];
@@ -82,7 +82,7 @@ describe('brontosaurus tail whip', () => {
     expect(d.abilityCooldown).toBeGreaterThan(whip.cooldown - 1);
   });
 
-  it('misses a hostile in front of it, and spares dinos in their own camp', () => {
+  it('misses a hostile in front of it, but whips dinos in their own camp', () => {
     const s = arena();
     const { d, cmd } = bronto(s);
     const ahead = createDino(s, 'velociraptor', WILD_TEAM, 520, 480, Math.PI);
@@ -100,7 +100,7 @@ describe('brontosaurus tail whip', () => {
       step(s, cmd({ x: d.x, y: d.y - 200 }, false, i === 0), DT);
     }
     expect(ahead.hp).toBe(ahead.maxHp);
-    expect(camper.hp).toBe(camper.maxHp);
+    expect(camper.hp).toBeLessThan(camper.maxHp);
   });
 
   it('wild brontosaurs whip at hostiles behind them now and then', () => {

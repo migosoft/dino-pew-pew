@@ -52,6 +52,7 @@ describe('app server', () => {
       ws.once('error', reject);
     });
     expect(JSON.parse(msg).type).toBe('hello');
+    expect(ws.extensions).toContain('permessage-deflate');
     ws.close();
   });
 });

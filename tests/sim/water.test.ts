@@ -6,6 +6,7 @@ import { createMatch, step } from '../../src/sim/sim';
 import { addPlayer, createTeam } from '../../src/sim/players';
 import { generateWorld } from '../../src/sim/worldgen';
 import { isDeepWater, isWater } from '../../src/sim/world';
+import { SMALL } from '../helpers';
 
 /** A dry, empty map whose tiles we paint by hand. */
 function pool(tile: number): GameState {
@@ -75,18 +76,18 @@ describe('water', () => {
 describe('lakes and rivers', () => {
   it('every map has deep and shallow water, the same for the same seed', () => {
     for (const seed of [1, 2, 3, 42]) {
-      const w = generateWorld(seed);
+      const w = generateWorld(seed, SMALL);
       const deep = w.tiles.filter((t) => t === Tile.Deep).length / w.tiles.length;
       const shallow = w.tiles.filter((t) => t === Tile.Shallow).length / w.tiles.length;
       expect(deep).toBeGreaterThan(0.05);
       expect(shallow).toBeGreaterThan(0.05);
       expect(deep + shallow).toBeLessThan(0.4);
-      expect(generateWorld(seed).tiles).toEqual(w.tiles);
+      expect(generateWorld(seed, SMALL).tiles).toEqual(w.tiles);
     }
   });
 
   it('rims all deep water with shallows', () => {
-    const w = generateWorld(2);
+    const w = generateWorld(2, SMALL);
     const wet = (t: number) => t === Tile.Deep || t === Tile.Shallow;
     for (let y = 1; y < w.rows - 1; y++) {
       for (let x = 1; x < w.cols - 1; x++) {
@@ -97,7 +98,7 @@ describe('lakes and rivers', () => {
   });
 
   it('keeps the base camps dry', () => {
-    const w = generateWorld(5);
+    const w = generateWorld(5, SMALL);
     for (const b of w.bases) {
       for (let a = 0; a < Math.PI * 2; a += 0.2) {
         for (let r = 0; r < 160; r += 10) expect(isWater(w, b.x + Math.cos(a) * r, b.y + Math.sin(a) * r)).toBe(false);
@@ -107,7 +108,7 @@ describe('lakes and rivers', () => {
 
   it('puts no rock, tree, plant or carcass in the water', () => {
     for (const seed of [1, 7]) {
-      const w = generateWorld(seed);
+      const w = generateWorld(seed, SMALL);
       const ring = (o: { x: number; y: number }) => o.x < 20 || o.y < 20 || o.x > w.width - 20 || o.y > w.height - 20;
       for (const o of w.obstacles) if (!ring(o)) expect(isWater(w, o.x, o.y)).toBe(false);
       for (const f of w.food) expect(isWater(w, f.x, f.y)).toBe(false);

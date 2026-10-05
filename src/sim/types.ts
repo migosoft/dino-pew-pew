@@ -306,6 +306,8 @@ export interface World {
   gridRows: number;
   /** Team base camp centers, one per possible team slot (kept clear of obstacles). */
   bases: Vec2[];
+  /** Tower positions per team slot (5 each) on a fixed map; null on random maps. */
+  towers: Vec2[][] | null;
   /** Initial food sources (plants + a few old carcasses); the match copies these into state.food. */
   food: FoodSource[];
 }
@@ -313,6 +315,7 @@ export interface World {
 export type GameEvent =
   | {
       type: 'shot';
+      /** The shooter: a dino id, or the structure id for tower shots (then mount is -1). */
       dinoId: number;
       mount: number;
       projectileId: number;
@@ -332,9 +335,49 @@ export type GameEvent =
   | { type: 'bite'; dinoId: number; targetId: number | null; x: number; y: number }
   | { type: 'impact'; projectileId: number; x: number; y: number }
   | { type: 'death'; dinoId: number; x: number; y: number; team: Team }
-  | { type: 'kill'; killer: number | null; victim: number | null; victimKind: string }
+  | { type: 'kill'; killer: number | null; victim: number | null; victimKind: string; /** Team of the tower that fired the killing shot, if any. */ tower?: string }
   | { type: 'spawn'; playerId: number; dinoId: number }
-  | { type: 'bounty'; playerId: number; amount: number; x: number; y: number };
+  | { type: 'bounty'; playerId: number; amount: number; x: number; y: number }
+  | { type: 'structureHit'; structureId: number; x: number; y: number; shielded: boolean }
+  | { type: 'towerDown'; structureId: number; team: Team; by: number | null }
+  | { type: 'towerUp'; structureId: number; team: Team }
+  | { type: 'campDown'; team: Team; by: number | null }
+  | { type: 'eliminated'; team: Team }
+  | { type: 'roundWon'; team: Team | null }
+  | { type: 'phase'; phase: RoundPhase };
+
+export type StructureKind = 'camp' | 'tower';
+
+/** A team's camp building or one of its defense towers. Solid while standing (hp > 0). */
+export interface Structure {
+  id: number;
+  team: Team;
+  kind: StructureKind;
+  x: number;
+  y: number;
+  radius: number;
+  hp: number;
+  maxHp: number;
+  /** Turret direction, radians (towers). */
+  angle: number;
+  /** Seconds until the tower gun can fire again. */
+  cooldown: number;
+  /** Seconds until a destroyed tower stands again (0 while standing or for good). */
+  rebuildIn: number;
+  hitFlash: number;
+  /** Dino the tower is aiming at. */
+  target: number | null;
+}
+
+export type RoundPhase = 'waiting' | 'countdown' | 'playing' | 'over';
+
+export interface RoundState {
+  phase: RoundPhase;
+  /** Seconds left in countdown / over. */
+  timer: number;
+  /** Winning team id once the round is over (null for a draw). */
+  winner: Team | null;
+}
 
 export interface TeamState {
   id: Team;
@@ -343,6 +386,7 @@ export interface TeamState {
   base: Vec2;
   /** Seconds the team has had no players; it dissolves after a timeout. */
   emptyFor: number;
+  eliminated: boolean;
 }
 
 export interface PlayerState {
@@ -367,6 +411,7 @@ export interface GameState {
   world: World;
   dinos: Dino[];
   projectiles: Projectile[];
+  structures: Structure[];
   events: GameEvent[];
   nextId: number;
   teams: TeamState[];
@@ -375,6 +420,9 @@ export interface GameState {
   /** Wild dinosaurs roam and respawn (off in most unit tests). */
   wildlife: boolean;
   wildSpawnTimer: { t: number };
+  /** Camps, towers and rounds are active. */
+  camps: boolean;
+  round: RoundState;
 }
 
 export const TICK_RATE = 60;

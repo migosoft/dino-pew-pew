@@ -140,35 +140,54 @@ function hexToRgb(h: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
+/** Ground chunk size in px. */
+export const CHUNK = 256;
+/** Ground details stay this far from the chunk edge: the widest one (a mud puddle) reaches about 7 px. */
+const DETAIL_INSET = 8;
+
 const isWet = (t: number) => t === Tile.Shallow || t === Tile.Deep;
 
-/** Render the whole ground into one canvas, with organic tile borders, shorelines and details. */
-export function drawGround(world: World): HTMLCanvasElement {
-  const { width, height, seed } = world;
-  const c = makeCanvas(width, height);
-  const img = c.ctx.createImageData(width, height);
+/**
+ * Render one rectangle of the ground (world px x0..x0+w, y0..y0+h) with organic tile borders,
+ * shorelines and details. The terrain is sampled a margin beyond the rectangle so neighbour tests
+ * see across chunk seams, and details are inset and seeded per chunk so none is cut by a seam.
+ */
+export function drawGroundChunk(world: World, x0: number, y0: number, w: number, h: number): HTMLCanvasElement {
+  const { seed } = world;
+  const M = 4;
+  const c = makeCanvas(w, h);
+  const img = c.ctx.createImageData(w, h);
   const rgb: Record<number, [number, number, number][]> = {};
   for (const k of Object.keys(TILE_COLORS)) rgb[+k] = TILE_COLORS[+k].map(hexToRgb);
   const deepEdge = DEEP_EDGE.map(hexToRgb);
   const foam = hexToRgb(FOAM);
   const wetSand = hexToRgb(WET_SAND);
-  // Terrain per pixel, with the same wobbled lookup the simulation uses.
-  const map = new Uint8Array(width * height);
-  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) map[y * width + x] = tileAt(world, x, y);
-  const at = (x: number, y: number) => map[Math.min(height - 1, Math.max(0, y)) * width + Math.min(width - 1, Math.max(0, x))];
+  // Terrain per pixel of the expanded region, with the same wobbled lookup the simulation uses.
+  const mw = w + M * 2;
+  const mh = h + M * 2;
+  const map = new Uint8Array(mw * mh);
+  for (let y = 0; y < mh; y++) {
+    for (let x = 0; x < mw; x++) {
+      const wx = Math.min(world.width - 1, Math.max(0, x0 - M + x));
+      const wy = Math.min(world.height - 1, Math.max(0, y0 - M + y));
+      map[y * mw + x] = tileAt(world, wx, wy);
+    }
+  }
+  /** Terrain at world coordinates (within the expanded region). */
+  const at = (x: number, y: number) => map[Math.min(mh - 1, Math.max(0, y - y0 + M)) * mw + Math.min(mw - 1, Math.max(0, x - x0 + M))];
   const near = (x: number, y: number, r: number, test: (t: number) => boolean) =>
     test(at(x - r, y)) || test(at(x + r, y)) || test(at(x, y - r)) || test(at(x, y + r));
 
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const t = map[y * width + x];
+  for (let y = y0; y < y0 + h; y++) {
+    for (let x = x0; x < x0 + w; x++) {
+      const t = at(x, y);
       const n = valueNoise(x / 3, y / 3, seed + 9) * 0.7 + hash2(x, y, seed) * 0.3;
       const shade = Math.min(3, Math.floor(n * 4));
       let col = rgb[t][shade];
       if (t === Tile.Deep && (near(x, y, 2, (o) => o === Tile.Shallow) || near(x, y, 4, (o) => o === Tile.Shallow))) col = deepEdge[shade];
       else if (isWet(t) && near(x, y, 1, (o) => !isWet(o))) col = foam;
       else if (!isWet(t) && near(x, y, 2, isWet)) col = wetSand;
-      const i = (y * width + x) * 4;
+      const i = ((y - y0) * w + (x - x0)) * 4;
       img.data[i] = col[0];
       img.data[i + 1] = col[1];
       img.data[i + 2] = col[2];
@@ -178,57 +197,57 @@ export function drawGround(world: World): HTMLCanvasElement {
   c.ctx.putImageData(img, 0, 0);
 
   // Ground details: grass tufts, ferns, pebbles, puddles, bones, stones on the river bed.
-  const rnd = seededRandom(seed * 7 + 1);
-  const count = Math.floor((width * height) / 260);
+  const rnd = seededRandom((seed * 7 + 1) ^ Math.imul(Math.floor(x0 / CHUNK) + 1, 73856093) ^ Math.imul(Math.floor(y0 / CHUNK) + 1, 19349663));
+  const count = Math.floor((w * h) / 260);
   for (let k = 0; k < count; k++) {
-    const x = Math.floor(rnd() * width);
-    const y = Math.floor(rnd() * height);
-    const t = map[y * width + x];
+    const x = x0 + DETAIL_INSET + Math.floor(rnd() * (w - DETAIL_INSET * 2));
+    const y = y0 + DETAIL_INSET + Math.floor(rnd() * (h - DETAIL_INSET * 2));
+    const t = at(x, y);
     const roll = rnd();
     // Keep land details off the shoreline.
     if (!isWet(t) && near(x, y, 3, isWet)) continue;
     if (t === Tile.Grass || t === Tile.GrassDark) {
       if (roll < 0.8) {
-        px(c, x, y, '#86b452');
-        px(c, x - 1, y - 1, '#86b452');
-        px(c, x + 1, y - 1, '#6f9a44');
+        px(c, x - x0, y - y0, '#86b452');
+        px(c, x - x0 - 1, y - y0 - 1, '#86b452');
+        px(c, x - x0 + 1, y - y0 - 1, '#6f9a44');
       } else if (roll < 0.86) {
-        px(c, x, y, rnd() < 0.5 ? '#e8d24a' : '#e07a9a');
-        px(c, x, y + 1, '#3a6020');
+        px(c, x - x0, y - y0, rnd() < 0.5 ? '#e8d24a' : '#e07a9a');
+        px(c, x - x0, y - y0 + 1, '#3a6020');
       }
     } else if (t === Tile.Fern) {
       if (roll < 0.6) {
-        line(c, x, y, x + 3, y - 2, '#68a040', 1);
-        line(c, x, y, x - 3, y - 2, '#68a040', 1);
-        px(c, x, y - 2, '#2c5420');
+        line(c, x - x0, y - y0, x - x0 + 3, y - y0 - 2, '#68a040', 1);
+        line(c, x - x0, y - y0, x - x0 - 3, y - y0 - 2, '#68a040', 1);
+        px(c, x - x0, y - y0 - 2, '#2c5420');
       }
     } else if (t === Tile.Dirt) {
       if (roll < 0.5) {
-        px(c, x, y, '#a89070');
-        px(c, x + 1, y + 1, '#5a4630');
+        px(c, x - x0, y - y0, '#a89070');
+        px(c, x - x0 + 1, y - y0 + 1, '#5a4630');
       } else if (roll < 0.53) {
         // Old bones bleached in the sun.
-        line(c, x - 3, y, x + 3, y, '#e6dcc0', 1);
-        for (let r = -2; r <= 2; r += 2) line(c, x + r, y - 2, x + r, y + 2, '#d4c8a8', 1);
+        line(c, x - x0 - 3, y - y0, x - x0 + 3, y - y0, '#e6dcc0', 1);
+        for (let r = -2; r <= 2; r += 2) line(c, x - x0 + r, y - y0 - 2, x - x0 + r, y - y0 + 2, '#d4c8a8', 1);
       }
     } else if (t === Tile.Mud && roll < 0.35) {
-      ellipse(c, x, y, 3 + rnd() * 3, 2 + rnd() * 1.5, (_nx, ny) => (ny < -0.3 ? '#5f7a86' : '#3e5562'));
+      ellipse(c, x - x0, y - y0, 3 + rnd() * 3, 2 + rnd() * 1.5, (_nx, ny) => (ny < -0.3 ? '#5f7a86' : '#3e5562'));
     } else if (t === Tile.Shallow && roll < 0.3 && !near(x, y, 2, (o) => o !== Tile.Shallow)) {
       // Pebbles on the bottom.
-      px(c, x, y, roll < 0.15 ? '#4a7f72' : '#86b8a4');
-      if (roll < 0.08) px(c, x + 1, y, '#4a7f72');
+      px(c, x - x0, y - y0, roll < 0.15 ? '#4a7f72' : '#86b8a4');
+      if (roll < 0.08) px(c, x - x0 + 1, y - y0, '#4a7f72');
     }
   }
-  // Reeds along the shores.
+  // Reeds along the shores. Same chunk seed and an inset so a clump (up to 4 px wide, 5 px tall) stays inside the chunk.
   for (let k = 0; k < count / 6; k++) {
-    const x = Math.floor(rnd() * width);
-    const y = Math.floor(rnd() * height);
-    if (map[y * width + x] !== Tile.Shallow || !near(x, y, 4, (o) => !isWet(o))) continue;
+    const x = x0 + 4 + Math.floor(rnd() * (w - 8));
+    const y = y0 + 5 + Math.floor(rnd() * (h - 10));
+    if (at(x, y) !== Tile.Shallow || !near(x, y, 4, (o) => !isWet(o))) continue;
     for (let r = 0; r < 4; r++) {
       const rx = x + Math.round((rnd() - 0.5) * 6);
       const ry = y + Math.round((rnd() - 0.5) * 4);
-      line(c, rx, ry, rx + (rnd() < 0.5 ? -1 : 1), ry - 3, '#5e8a3a', 1);
-      px(c, rx, ry - 3, '#8ab452');
+      line(c, rx - x0, ry - y0, rx - x0 + (rnd() < 0.5 ? -1 : 1), ry - y0 - 3, '#5e8a3a', 1);
+      px(c, rx - x0, ry - y0 - 3, '#8ab452');
     }
   }
   return c.canvas;
@@ -321,14 +340,6 @@ export function drawTotem(banner: string, bannerLight: string): HTMLCanvasElemen
   rect(c, 5, 0, 4, 3, '#efe4c2');
   px(c, 6, 1, '#17110d');
   px(c, 8, 1, '#17110d');
-  outline(c, OUTLINE);
-  return c.canvas;
-}
-
-/** Unclaimed campsite marker stone. */
-export function drawCampStone(): HTMLCanvasElement {
-  const c = makeCanvas(10, 8);
-  ellipse(c, 5, 4, 4, 3, (nx, ny, x, y) => litShade(nx, ny, x, y, '#3a3631', '#5e5850', '#8a8378'));
   outline(c, OUTLINE);
   return c.canvas;
 }
