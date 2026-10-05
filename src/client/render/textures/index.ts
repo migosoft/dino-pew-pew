@@ -32,6 +32,7 @@ import { drawRaptorBody, drawRaptorHead, drawRaptorHeadArmor, drawRaptorSaddleAr
 import { drawBroadsideGun, drawBrontosaurusBody, drawBrontosaurusHead, drawBrontosaurusPlatform, drawTailGun } from './brontosaurusArt';
 import { drawRexHeadGun, drawRexShoulderCannon, drawTrexBody, drawTrexHead, drawTrexHeadArmor, drawTrexSaddleArmor } from './trexArt';
 import { drawChainSegment } from './chainArt';
+import { drawCamp, drawField, drawFieldRing, drawTowerBase, drawTowerTurret } from './campArt';
 import { CHAINS } from '../chains';
 import { BUSH_VARIANTS, CARCASS_KINDS, FERN_VARIANTS, drawBush, drawCarcass, drawFernPatch, type FoodStage } from './foodArt';
 
@@ -103,7 +104,14 @@ export function generateTextures(scene: Phaser.Scene): void {
     if (key !== 'wild') addStrip(scene, `brontosaurus_armor_${key}`, drawBrontosaurusPlatform(pal), DIRS);
     addStrip(scene, `rider_${key}`, drawRider(pal), DIRS);
     addImage(scene, `totem_${key}`, drawTotem(pal.tunic, pal.tunicLight));
+    if (key !== 'wild') {
+      for (let st = 0; st <= 5; st++) addImage(scene, `camp_${key}_${st}`, drawCamp(pal, st));
+      for (let st = 0; st <= 3; st++) addImage(scene, `tower_${key}_${st}`, drawTowerBase(pal, st));
+      addStrip(scene, `towerTurret_${key}`, drawTowerTurret(pal), DIRS);
+      addImage(scene, `field_${key}`, drawField(pal.tunicLight));
+    }
   });
+  addImage(scene, 'fieldRing', drawFieldRing());
   addImage(scene, 'campStone', drawCampStone());
   addStrip(scene, 'weapon_sideCannon', drawSideCannon(), DIRS);
   addStrip(scene, 'weapon_raptorSideGun', drawRaptorSideGun(), DIRS);
