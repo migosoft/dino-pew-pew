@@ -146,11 +146,11 @@ export class WaterView {
   }
 
   /** A ring of ripples and a spray of droplets (leap landings, whips, dashes, bolts). */
-  splash(x: number, y: number, size: number): void {
+  splash(x: number, y: number, size: number, drops = Math.round(4 + size / 3)): void {
     if (tileAt(this.world, x, y) !== Tile.Deep && tileAt(this.world, x, y) !== Tile.Shallow) return;
     this.ripple(x, y, size * 0.3, size, 0.7, 0.9);
     this.ripple(x, y, size * 0.15, size * 0.6, 0.5, 0.8);
-    this.droplets.explode(Math.round(4 + size / 3), x, y);
+    this.droplets.explode(drops, x, y);
   }
 
   isWet(x: number, y: number): boolean {

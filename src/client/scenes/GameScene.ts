@@ -144,7 +144,8 @@ export class GameScene extends Phaser.Scene {
     }
     this.syncDinoViews(dinos);
     this.waterView.update(delta, dinos);
-    for (const p of mirror.takeSpent()) this.waterView.splash(p.x, p.y, 6);
+    // Spent bolts only plink: a small ring and a couple of droplets.
+    for (const p of mirror.takeSpent()) this.waterView.splash(p.x, p.y, 3, 2);
     const meInfo = players.find((p) => p.id === me);
     const myDino = dinos.find((d) => d.playerId === me);
     this.projectileView.update(mirror.projectilesAt(rt), meInfo?.team);
