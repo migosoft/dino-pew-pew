@@ -1,6 +1,6 @@
 # Dinoriders: Handoff
 
-**Status (2026-10-05, end of session):** every requested feature is implemented. All 97 tests pass, and the type-check and build are clean. Everything is committed on `master` (latest `fef0130`), and the working tree is clean. Nothing has been pushed.
+**Status (2026-10-05, end of session):** every requested feature is implemented. All 97 tests pass, and the type-check and build are clean. Everything is committed on `master`, and the working tree is clean. Nothing has been pushed.
 - Phase 7 and its follow-ups have been checked in a browser: the 3072 px map with lakes and rivers, wading, the playable Brontosaurus (weapons platform, tail whip, 1.5× size, bending neck and tail), living water, and bending, trailing tails on all three species.
 - The Docker image on :8080 has **not** been rebuilt since Phase 6. Run `docker compose up --build -d` when the user wants it.
 
