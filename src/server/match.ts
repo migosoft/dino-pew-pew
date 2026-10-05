@@ -3,19 +3,23 @@ import type { GameState, InputCommand } from '../sim/types';
 import { DT, TICK_RATE } from '../sim/types';
 import { createMatch, step } from '../sim/sim';
 import { listDinos } from '../sim/defs/dinos';
-import { MAX_PLAYERS, MAX_TEAMS, addPlayer, createTeam, removePlayer } from '../sim/players';
+import { MAX_PLAYERS, addPlayer, removePlayer } from '../sim/players';
+import { switchTeam } from '../sim/rounds';
+import { findPlayer, findTeam } from '../sim/world';
+import { RANDOM_MAP, TEAM_COUNTS, getMap, mapsFor, worldOptionsFor, type RoundSettings } from '../sim/maps';
+import { DEFAULT_TILES } from '../sim/worldgen';
+import { makeRng, rand, type RngState } from '../sim/rng';
 import { buyUpgrade } from '../sim/upgrades';
 import {
-  NEW_TEAM,
   PROTOCOL_VERSION,
   SNAPSHOT_EVERY,
   buildSnapshot,
   carcassTuples,
   encodeCarcass,
-  isKnownTeam,
   parseClientMsg,
   plantLevels,
   playerInfos,
+  roundInfo,
   speciesInfo,
   teamInfos,
   type CarcassTuple,
@@ -40,38 +44,112 @@ interface Session {
   msgCount: number;
 }
 
-/** The one persistent match a server process hosts. */
+export interface MatchOptions {
+  wildlife?: boolean;
+  /** Fixed settings (env TEAMS/MAP): no setup screen, never reset. */
+  preset?: RoundSettings;
+  /** Size of random maps in tiles (tests use smaller maps). */
+  tiles?: number;
+}
+
+/** The match a server process hosts: one round after another, with the settings the first player chose. */
 export class Match {
-  readonly state: GameState;
-  readonly seed: number;
+  state: GameState | null = null;
+  settings: RoundSettings | null;
+  private readonly locked: boolean;
+  private readonly wildlife: boolean;
+  private readonly tiles: number;
+  private readonly firstSeed: number;
+  private readonly rng: RngState;
+  private rounds = 0;
   private sessions = new Set<Session>();
   private pending: TimedEvent[] = [];
   /** Plant food levels as last broadcast, to send only changes. */
   private sentPlants = new Map<number, number>();
   /** Carcass food levels as last broadcast, to send only new, changed and gone carcasses. */
   private sentCarcasses = new Map<number, number>();
-  /** Players and teams as last broadcast (JSON), to leave them out while unchanged. */
+  /** Players, teams and round as last broadcast (JSON), to leave them out while unchanged. */
   private sentPlayers = '';
   private sentTeams = '';
+  private sentRound = '';
   private nameCounter = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastTime = 0;
   private acc = 0;
 
-  constructor(seed: number, { wildlife = true }: { wildlife?: boolean } = {}) {
-    this.seed = seed;
-    this.state = createMatch(seed, undefined, { wildlife });
+  constructor(seed: number, opts: MatchOptions = {}) {
+    this.wildlife = opts.wildlife ?? true;
+    this.tiles = opts.tiles ?? DEFAULT_TILES;
+    this.firstSeed = seed;
+    this.rng = makeRng(seed ^ 0x51ed);
+    this.locked = !!opts.preset;
+    this.settings = opts.preset ?? null;
+    if (this.settings) this.startRound();
+  }
+
+  /** Build a fresh world for the current settings (a fixed map always uses its own seed). */
+  private startRound(): void {
+    const st = this.settings!;
+    const recipe = getMap(st.map);
+    const seed = recipe ? recipe.seed : this.rounds === 0 ? this.firstSeed : (rand(this.rng) * 2 ** 31) >>> 0;
+    this.rounds++;
+    this.state = createMatch(seed, worldOptionsFor(st.map, st.teams, this.tiles), { wildlife: this.wildlife, teams: st.teams });
     this.sentPlants = plantLevels(this.state);
+    this.sentCarcasses.clear();
+    this.sentPlayers = this.sentTeams = this.sentRound = '';
+    this.pending = [];
+  }
+
+  /** Round over: same settings, new world. Everyone keeps their team slot, mount and name. */
+  private nextRound(): void {
+    const old = this.state!;
+    this.startRound();
+    const state = this.state!;
+    for (const s of this.sessions) {
+      if (s.playerId === null) continue;
+      const p = findPlayer(old, s.playerId);
+      if (!p) {
+        s.playerId = null;
+        continue;
+      }
+      const slot = findTeam(old, p.team)?.slot ?? 0;
+      const team = state.teams.find((t) => t.slot === slot) ?? state.teams[0];
+      s.playerId = addPlayer(state, team.id, p.kind, p.name).id;
+      s.input = null;
+      this.sendWelcome(s);
+    }
+  }
+
+  private sendWelcome(s: Session): void {
+    const state = this.state!;
+    const st = this.settings!;
+    // New clients regenerate full plants from the seed; tell them which ones are already eaten.
+    const plants: PlantTuple[] = state.food.filter((f) => f.kind !== 'carcass' && f.food < f.maxFood).map((f) => [f.id, this.sentPlants.get(f.id) ?? Math.ceil(f.food)]);
+    this.send(s, {
+      t: 'welcome',
+      protocol: PROTOCOL_VERSION,
+      playerId: s.playerId!,
+      seed: state.world.seed,
+      map: st.map,
+      teams: st.teams,
+      tiles: state.world.cols,
+      tick: state.tick,
+      tickRate: TICK_RATE,
+      plants,
+      carcasses: carcassTuples(state),
+    });
   }
 
   lobby(): LobbyInfo {
     const s = this.state;
     return {
       protocol: PROTOCOL_VERSION,
-      teams: teamInfos(s),
-      canCreateTeam: s.teams.length < MAX_TEAMS,
-      canJoin: s.players.length < MAX_PLAYERS,
-      players: s.players.length,
+      setup: this.settings,
+      maps: TEAM_COUNTS.flatMap((n) => mapsFor(n).filter((m) => m.id !== RANDOM_MAP)),
+      phase: s?.round.phase ?? null,
+      teams: s ? teamInfos(s) : [],
+      canJoin: !s || s.players.length < MAX_PLAYERS,
+      players: s?.players.length ?? 0,
       maxPlayers: MAX_PLAYERS,
       species: listDinos().map((d) => speciesInfo(d.kind)),
     };
@@ -105,24 +183,28 @@ export class Match {
 
   /** Advance one tick; broadcast a snapshot every SNAPSHOT_EVERY ticks. Public for tests. */
   tick(): void {
+    const state = this.state;
+    if (!state) return;
     const inputs = new Map<number, InputCommand>();
     for (const s of this.sessions) if (s.playerId !== null && s.input) inputs.set(s.playerId, s.input);
-    step(this.state, inputs, DT);
-    const tick = this.state.tick;
-    for (const e of this.state.events) this.pending.push({ ...e, tick });
+    step(state, inputs, DT);
+    const tick = state.tick;
+    for (const e of state.events) this.pending.push({ ...e, tick });
+    if (state.round.phase === 'over' && state.round.timer <= 0) return this.nextRound();
     if (tick % SNAPSHOT_EVERY === 0) this.broadcast();
   }
 
   private broadcast(): void {
+    const state = this.state!;
     const changed: PlantTuple[] = [];
-    for (const [id, food] of plantLevels(this.state)) {
+    for (const [id, food] of plantLevels(state)) {
       if (this.sentPlants.get(id) === food) continue;
       this.sentPlants.set(id, food);
       changed.push([id, food]);
     }
     const carcasses: CarcassTuple[] = [];
     const live = new Set<number>();
-    for (const f of this.state.food) {
+    for (const f of state.food) {
       if (f.kind !== 'carcass') continue;
       live.add(f.id);
       const food = Math.ceil(f.food);
@@ -136,21 +218,25 @@ export class Match {
       this.sentCarcasses.delete(id);
       gone.push(id);
     }
-    const players = playerInfos(this.state);
-    const teams = teamInfos(this.state);
+    const players = playerInfos(state);
+    const teams = teamInfos(state);
+    const round = roundInfo(state);
     const playersJson = JSON.stringify(players);
     const teamsJson = JSON.stringify(teams);
+    const roundJson = JSON.stringify(round);
     const body = JSON.stringify(
-      buildSnapshot(this.state, this.pending, {
+      buildSnapshot(state, this.pending, {
         plants: changed,
         carcasses,
         gone,
         players: playersJson === this.sentPlayers ? null : players,
         teams: teamsJson === this.sentTeams ? null : teams,
+        round: roundJson === this.sentRound ? null : round,
       }),
     );
     this.sentPlayers = playersJson;
     this.sentTeams = teamsJson;
+    this.sentRound = roundJson;
     this.pending = [];
     // Splice the per-recipient ack into the shared body instead of re-serializing.
     const rest = body.slice(1);
@@ -176,7 +262,12 @@ export class Match {
     });
     ws.on('close', () => {
       this.sessions.delete(session);
-      if (session.playerId !== null) removePlayer(this.state, session.playerId);
+      if (session.playerId !== null && this.state) removePlayer(this.state, session.playerId);
+      // Everyone gone: the next player to arrive sets up the server again.
+      if (!this.locked && ![...this.sessions].some((x) => x.playerId !== null)) {
+        this.settings = null;
+        this.state = null;
+      }
     });
     ws.on('error', () => ws.close());
   }
@@ -195,31 +286,41 @@ export class Match {
       return;
     }
     if (msg.t === 'buy') {
-      if (s.playerId === null) return;
+      if (!this.state || s.playerId === null) return;
       const result = buyUpgrade(this.state, s.playerId, msg.stat);
       const why: Record<string, string> = { 'not-in-base': 'SHOP ONLY IN YOUR BASE CAMP', 'max-level': 'ALREADY AT MAX LEVEL', 'no-money': 'NOT ENOUGH MONEY', 'no-dino': 'WAIT UNTIL YOU RESPAWN' };
       if (result !== 'ok') this.send(s, { t: 'notice', message: why[result] });
       return;
     }
+    if (msg.t === 'switch') {
+      if (!this.state || s.playerId === null) return;
+      if (!listDinos().some((d) => d.kind === msg.kind)) return this.send(s, { t: 'notice', message: 'UNKNOWN SPECIES' });
+      const result = switchTeam(this.state, s.playerId, msg.team, msg.kind);
+      if (result === 'bad-team') return this.send(s, { t: 'notice', message: 'THAT TEAM IS OUT' });
+      if (result === 'not-eliminated') return this.send(s, { t: 'notice', message: 'YOUR CAMP STILL STANDS' });
+      this.sentPlayers = '';
+      return;
+    }
     // join
     if (s.playerId !== null) return;
-    const state = this.state;
-    if (state.players.length >= MAX_PLAYERS) return this.send(s, { t: 'error', message: 'SERVER FULL' });
+    const setup = this.settings ?? msg.setup;
+    if (!setup) return this.send(s, { t: 'error', message: 'THE SERVER WAS RESET - CHOOSE AGAIN' });
     if (!listDinos().some((d) => d.kind === msg.kind)) return this.send(s, { t: 'error', message: 'UNKNOWN SPECIES' });
-    let teamId = msg.team;
-    if (teamId === NEW_TEAM) {
-      const team = createTeam(state);
-      if (!team) return this.send(s, { t: 'error', message: 'ALL TEAM SLOTS TAKEN' });
-      teamId = team.id;
-    } else if (!isKnownTeam(state, teamId)) {
-      return this.send(s, { t: 'error', message: 'TEAM NO LONGER EXISTS' });
+    // First valid setup wins: validate the join before it fixes the server's settings.
+    if (!Array.from({ length: setup.teams }, (_, i) => `team${i}`).includes(msg.team)) return this.send(s, { t: 'error', message: 'TEAM NO LONGER EXISTS' });
+    if (!this.settings) {
+      this.settings = setup;
+      this.startRound();
     }
-    const player = addPlayer(state, teamId, msg.kind, `RIDER ${++this.nameCounter}`);
+    const state = this.state!;
+    if (state.players.length >= MAX_PLAYERS) return this.send(s, { t: 'error', message: 'SERVER FULL' });
+    const team = findTeam(state, msg.team);
+    if (!team) return this.send(s, { t: 'error', message: 'TEAM NO LONGER EXISTS' });
+    if (team.eliminated) return this.send(s, { t: 'error', message: 'THAT TEAM IS OUT' });
+    const player = addPlayer(state, team.id, msg.kind, `RIDER ${++this.nameCounter}`);
     s.playerId = player.id;
-    // The newcomer needs the full players and teams in its first snapshot.
-    this.sentPlayers = this.sentTeams = '';
-    // New clients regenerate full plants from the seed; tell them which ones are already eaten.
-    const plants: PlantTuple[] = state.food.filter((f) => f.kind !== 'carcass' && f.food < f.maxFood).map((f) => [f.id, this.sentPlants.get(f.id) ?? Math.ceil(f.food)]);
-    this.send(s, { t: 'welcome', protocol: PROTOCOL_VERSION, playerId: player.id, seed: this.seed, tick: state.tick, tickRate: TICK_RATE, plants, carcasses: carcassTuples(state) });
+    // The newcomer needs the full players, teams and round in its first snapshot.
+    this.sentPlayers = this.sentTeams = this.sentRound = '';
+    this.sendWelcome(s);
   }
 }

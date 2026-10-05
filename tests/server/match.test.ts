@@ -3,14 +3,15 @@ import type { AddressInfo } from 'node:net';
 import { WebSocket } from 'ws';
 import { createAppServer, type AppServer } from '../../src/server/http';
 import { Match } from '../../src/server/match';
-import { NEW_TEAM, encodeInput, type ServerMsg, type SnapshotMsg, type WelcomeMsg } from '../../src/net/protocol';
+import { eliminateTeam } from '../../src/sim/rounds';
+import { encodeInput, type ServerMsg, type SnapshotMsg, type WelcomeMsg } from '../../src/net/protocol';
 
 let app: AppServer | null = null;
 let match: Match | null = null;
 const sockets: WebSocket[] = [];
 
 async function startServer() {
-  match = new Match(1234, { wildlife: false });
+  match = new Match(1234, { wildlife: false, tiles: 256 });
   const m = match;
   app = createAppServer({ staticDir: '/nonexistent', onConnection: (ws) => m.connect(ws), api: { lobby: () => m.lobby() } });
   await new Promise<void>((r) => app!.server.listen(0, '127.0.0.1', r));
@@ -56,16 +57,15 @@ describe('game server', () => {
   it('lets two clients join opposing teams and see each other in snapshots', async () => {
     const host = await startServer();
     const a = await client(host);
-    a.send({ t: 'join', team: NEW_TEAM, kind: 'triceratops' });
+    a.send({ t: 'join', team: 'team0', kind: 'triceratops', setup: { teams: 2, map: 'random' } });
     const wa = await a.waitFor<WelcomeMsg>((m) => m.t === 'welcome');
     expect(wa.seed).toBe(1234);
 
     const lobby = await (await fetch(`http://${host}/api/lobby`)).json();
-    expect(lobby.teams).toHaveLength(1);
-    expect(lobby.canCreateTeam).toBe(true);
+    expect(lobby.teams).toHaveLength(2);
 
     const b = await client(host);
-    b.send({ t: 'join', team: NEW_TEAM, kind: 'triceratops' });
+    b.send({ t: 'join', team: 'team1', kind: 'triceratops' });
     const wb = await b.waitFor<WelcomeMsg>((m) => m.t === 'welcome');
     const c = await client(host);
     c.send({ t: 'join', team: lobby.teams[0].id, kind: 'triceratops' });
@@ -83,44 +83,45 @@ describe('game server', () => {
   it('applies inputs, acknowledges their sequence numbers and ignores stale ones', async () => {
     const host = await startServer();
     const a = await client(host);
-    a.send({ t: 'join', team: NEW_TEAM, kind: 'triceratops' });
+    a.send({ t: 'join', team: 'team0', kind: 'triceratops', setup: { teams: 2, map: 'random' } });
     const w = await a.waitFor<WelcomeMsg>((m) => m.t === 'welcome');
-    const dino0 = match!.state.dinos[0];
+    const dino0 = match!.state!.dinos[0];
     const start = { x: dino0.x, y: dino0.y };
     a.send(encodeInput(5, { throttle: 1, turn: 0, aimWorld: { x: 0, y: 0 }, fire: false }));
     a.send(encodeInput(3, { throttle: -1, turn: 0, aimWorld: { x: 0, y: 0 }, fire: false })); // stale
-    await new Promise((r) => setTimeout(r, 30));
+    // Tick until the server has taken the input (delivery time varies under load).
+    for (let i = 0; i < 100 && !a.msgs.some((m) => m.t === 'snap' && m.ack === 5); i++) await ticks(3);
     await ticks(60);
-    const d = match!.state.dinos.find((x) => x.playerId === w.playerId)!;
+    const d = match!.state!.dinos.find((x) => x.playerId === w.playerId)!;
     expect(Math.hypot(d.x - start.x, d.y - start.y)).toBeGreaterThan(20);
-    const snaps = a.msgs.filter((m): m is SnapshotMsg => m.t === 'snap');
-    expect(snaps.at(-1)!.ack).toBe(5);
+    const last = await a.waitFor<SnapshotMsg>((m) => m.t === 'snap' && m.ack === 5);
+    expect(last.ack).toBe(5);
   });
 
   it('rejects joins to unknown teams and species, and removes players who leave', async () => {
     const host = await startServer();
     const a = await client(host);
-    a.send({ t: 'join', team: 'team3', kind: 'triceratops' });
-    await a.waitFor((m) => m.t === 'error');
-    a.send({ t: 'join', team: NEW_TEAM, kind: 'tyrannosaurus' });
+    a.send({ t: 'join', team: 'team3', kind: 'triceratops', setup: { teams: 2, map: 'random' } });
+    await a.waitFor((m) => m.t === 'error' && m.message === 'TEAM NO LONGER EXISTS');
+    expect(match!.settings).toBeNull();
+    a.send({ t: 'join', team: 'team0', kind: 'tyrannosaurus', setup: { teams: 2, map: 'random' } });
     await a.waitFor((m) => m.t === 'error' && m.message === 'UNKNOWN SPECIES');
-    a.send({ t: 'join', team: NEW_TEAM, kind: 'triceratops' });
+    a.send({ t: 'join', team: 'team0', kind: 'triceratops', setup: { teams: 2, map: 'random' } });
     await a.waitFor((m) => m.t === 'welcome');
-    expect(match!.state.players).toHaveLength(1);
+    expect(match!.state!.players).toHaveLength(1);
     a.ws.close();
     await new Promise((r) => setTimeout(r, 50));
-    expect(match!.state.players).toHaveLength(0);
-    expect(match!.state.dinos).toHaveLength(0);
+    expect(match!.state).toBeNull();
   });
 
   it('sells upgrades over the socket and explains refusals', async () => {
     const host = await startServer();
     const a = await client(host);
-    a.send({ t: 'join', team: NEW_TEAM, kind: 'triceratops' });
+    a.send({ t: 'join', team: 'team0', kind: 'triceratops', setup: { teams: 2, map: 'random' } });
     const w = await a.waitFor<WelcomeMsg>((m) => m.t === 'welcome');
     a.send({ t: 'buy', stat: 'damage' });
     await a.waitFor((m) => m.t === 'notice' && m.message === 'NOT ENOUGH MONEY');
-    match!.state.players[0].money = 1000;
+    match!.state!.players[0].money = 1000;
     a.send({ t: 'buy', stat: 'damage' });
     a.send({ t: 'buy', stat: 'teleport' }); // invalid stat: ignored
     await new Promise((r) => setTimeout(r, 30));
@@ -132,9 +133,9 @@ describe('game server', () => {
   it('sends carcasses and players only when they change', async () => {
     const host = await startServer();
     const a = await client(host);
-    a.send({ t: 'join', team: NEW_TEAM, kind: 'triceratops' });
+    a.send({ t: 'join', team: 'team0', kind: 'triceratops', setup: { teams: 2, map: 'random' } });
     const w = await a.waitFor<WelcomeMsg>((m) => m.t === 'welcome');
-    const worldCarcasses = match!.state.food.filter((f) => f.kind === 'carcass');
+    const worldCarcasses = match!.state!.food.filter((f) => f.kind === 'carcass');
     expect(w.carcasses.map((c) => c[0]).sort()).toEqual(worldCarcasses.map((f) => f.id).sort());
     await ticks(6);
     const [first, second] = a.msgs.filter((m): m is SnapshotMsg => m.t === 'snap');
@@ -148,6 +149,105 @@ describe('game server', () => {
     await ticks(3);
     const third = a.msgs.filter((m): m is SnapshotMsg => m.t === 'snap')[2];
     expect(third.gone).toEqual([worldCarcasses[0].id]);
+  });
+
+  it('the first join sets up the round; a second setup is ignored', async () => {
+    const host = await startServer();
+    const a = await client(host);
+    a.send({ t: 'join', team: 'team1', kind: 'triceratops', setup: { teams: 3, map: 'random' } });
+    const wa = await a.waitFor<WelcomeMsg>((m) => m.t === 'welcome');
+    expect([wa.teams, wa.map, wa.tiles]).toEqual([3, 'random', 256]);
+    const b = await client(host);
+    b.send({ t: 'join', team: 'team2', kind: 'triceratops', setup: { teams: 2, map: 'crossing' } });
+    const wb = await b.waitFor<WelcomeMsg>((m) => m.t === 'welcome');
+    expect(wb.teams).toBe(3);
+    expect(match!.settings).toEqual({ teams: 3, map: 'random' });
+  });
+
+  it('refuses a join without a setup while the server has none', async () => {
+    const host = await startServer();
+    const a = await client(host);
+    a.send({ t: 'join', team: 'team0', kind: 'triceratops' });
+    const err = await a.waitFor((m) => m.t === 'error');
+    expect((err as { message: string }).message).toMatch(/CHOOSE/);
+  });
+
+  it('refuses a join to a team slot the setup does not have', async () => {
+    const host = await startServer();
+    const a = await client(host);
+    a.send({ t: 'join', team: 'team2', kind: 'triceratops', setup: { teams: 2, map: 'random' } });
+    const err = await a.waitFor((m) => m.t === 'error');
+    expect((err as { message: string }).message).toBe('TEAM NO LONGER EXISTS');
+    expect(match!.settings).toBeNull();
+    expect(match!.state).toBeNull();
+  });
+
+  it('starts a new round after the intermission and keeps everyone on their team', async () => {
+    const host = await startServer();
+    const a = await client(host);
+    a.send({ t: 'join', team: 'team0', kind: 'triceratops', setup: { teams: 2, map: 'random' } });
+    const w1 = await a.waitFor<WelcomeMsg>((m) => m.t === 'welcome');
+    const s1 = match!.state!;
+    s1.round = { phase: 'over', timer: 0, winner: 'team0' };
+    await ticks(1);
+    await a.waitFor((m) => m.t === 'welcome' && m !== w1);
+    const welcomes = a.msgs.filter((m) => m.t === 'welcome') as WelcomeMsg[];
+    expect(welcomes).toHaveLength(2);
+    expect(match!.state).not.toBe(s1);
+    expect(welcomes[1].seed).not.toBe(w1.seed);
+    const p = match!.state!.players.find((x) => x.id === welcomes[1].playerId)!;
+    expect(p.team).toBe('team0');
+    expect(p.money).toBe(0);
+  });
+
+  it('resets to no setup when the last player leaves', async () => {
+    const host = await startServer();
+    const a = await client(host);
+    a.send({ t: 'join', team: 'team0', kind: 'triceratops', setup: { teams: 2, map: 'random' } });
+    await a.waitFor((m) => m.t === 'welcome');
+    a.ws.close();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(match!.settings).toBeNull();
+    expect(match!.state).toBeNull();
+    expect(match!.lobby().setup).toBeNull();
+  });
+
+  it('a preset never resets, and the lobby lists the maps', () => {
+    const m = new Match(5, { wildlife: false, tiles: 256, preset: { teams: 4, map: 'random' } });
+    expect(m.state!.teams).toHaveLength(4);
+    expect(m.lobby().maps.map((x) => x.id)).toContain('crossing');
+  });
+
+  it('lets an eliminated rider switch teams', async () => {
+    const host = await startServer();
+    const a = await client(host);
+    a.send({ t: 'join', team: 'team0', kind: 'triceratops', setup: { teams: 3, map: 'random' } });
+    const w = await a.waitFor<WelcomeMsg>((m) => m.t === 'welcome');
+    const st = match!.state!;
+    st.round.phase = 'playing';
+    eliminateTeam(st, 'team0');
+    a.send({ t: 'switch', team: 'team2', kind: 'trex' });
+    await ticks(1);
+    expect(st.players.find((p) => p.id === w.playerId)!.team).toBe('team2');
+  });
+
+  it('refuses joins and switches into an eliminated team', async () => {
+    const host = await startServer();
+    const a = await client(host);
+    a.send({ t: 'join', team: 'team0', kind: 'triceratops', setup: { teams: 3, map: 'random' } });
+    const w = await a.waitFor<WelcomeMsg>((m) => m.t === 'welcome');
+    const st = match!.state!;
+    st.round.phase = 'playing';
+    eliminateTeam(st, 'team0');
+    eliminateTeam(st, 'team2');
+    const b = await client(host);
+    b.send({ t: 'join', team: 'team2', kind: 'triceratops' });
+    const err = await b.waitFor((m) => m.t === 'error');
+    expect((err as { message: string }).message).toBe('THAT TEAM IS OUT');
+    a.send({ t: 'switch', team: 'team2', kind: 'triceratops' });
+    await a.waitFor((m) => m.t === 'notice' && m.message === 'THAT TEAM IS OUT');
+    expect(st.players.find((p) => p.id === w.playerId)!.team).toBe('team0');
+    expect(st.players).toHaveLength(1);
   });
 
   it('disconnects clients that flood messages', async () => {
