@@ -10,10 +10,12 @@ export interface WorldGenOptions {
   tileSize?: number;
   /** Lakes and rivers (default true). Unit tests that need dry ground turn them off. */
   water?: boolean;
+  /** Number of base camps (default 4). */
+  teams?: number;
 }
 
-/** Default map: 256 x 256 tiles of 16 px = 4096 px square (still one ground texture). */
-export const DEFAULT_TILES = 256;
+/** Default map: 512 x 512 tiles of 16 px = 8192 px square (the client draws the ground in chunks). */
+export const DEFAULT_TILES = 512;
 /** Obstacle-free radius around each base camp. */
 export const BASE_CLEAR = 140;
 /** Water never comes closer than this to a base camp center. */
@@ -26,20 +28,30 @@ export const MAX_WORLD_CARCASSES = 10;
 /** Ids for the initial carcasses (live carcasses use CARCASS_ID_BASE + n). */
 const WORLD_CARCASS_ID_BASE = 900_000;
 
-/** Distance of base camps from the map edge: about 1/8 of the map, at least 260 px. */
+/** Distance of base camps from the map edge: 1/8 of the map, at least 260 px. */
 function baseInset(width: number): number {
-  return Math.round(Math.min(380, Math.max(260, width * 0.125)));
+  return Math.round(Math.max(260, width * 0.125));
 }
 
-/** Base slots: diagonal opposites first so the first two teams start far apart. */
-export function baseSlots(width: number, height: number): Vec2[] {
+/**
+ * Base camps for `teams` teams, spread out: 2 in opposite corners, 3 in a triangle around the
+ * centre, 4 in the corners (diagonal opposites first, so the first two teams start far apart).
+ */
+export function baseSlots(width: number, height: number, teams = 4): Vec2[] {
   const a = baseInset(Math.min(width, height));
-  return [
+  if (teams === 3) {
+    const cx = width / 2;
+    const cy = height / 2;
+    const r = Math.min(width, height) / 2 - a;
+    return [-90, 30, 150].map((deg) => ({ x: Math.round(cx + Math.cos((deg * Math.PI) / 180) * r), y: Math.round(cy + Math.sin((deg * Math.PI) / 180) * r) }));
+  }
+  const corners = [
     { x: a, y: a },
     { x: width - a, y: height - a },
     { x: width - a, y: a },
     { x: a, y: height - a },
   ];
+  return corners.slice(0, teams === 2 ? 2 : 4);
 }
 
 /** Share of the map covered by lakes: deep cores, and the shallow rims around them. */
@@ -113,7 +125,7 @@ export function generateWorld(seed: number, opts: WorldGenOptions = {}): World {
   const width = cols * tileSize;
   const height = rows * tileSize;
   const rng = makeRng(seed ^ 0x9e3779b9);
-  const bases = baseSlots(width, height);
+  const bases = baseSlots(width, height, opts.teams ?? 4);
 
   const tiles = new Uint8Array(cols * rows);
   const water = (opts.water ?? true) ? waterLayer(cols, rows, seed) : null;

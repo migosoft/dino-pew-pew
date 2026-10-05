@@ -3,10 +3,11 @@ import { createMatch } from '../../src/sim/sim';
 import { addPlayer, createTeam } from '../../src/sim/players';
 import { carcassTuples, decodeDino, encodeDino, encodeInput, parseClientMsg } from '../../src/net/protocol';
 import { makeCarcass } from '../../src/sim/systems/feeding';
+import { SMALL } from '../helpers';
 
 describe('dino codec', () => {
   it('round-trips every field the client renders (within quantization)', () => {
-    const s = createMatch(3);
+    const s = createMatch(3, SMALL);
     const p = addPlayer(s, createTeam(s)!.id, 'triceratops', 'A');
     const d = s.dinos[0];
     Object.assign(d, { x: 123.456, y: 789.01, heading: -2.3456, speed: 33.33, headYaw: 0.321, hp: 57.4, hitFlash: 0.05, stride: 42.42, eating: true });
@@ -35,7 +36,7 @@ describe('dino codec', () => {
   });
 
   it('round-trips the ability progress and cooldown', () => {
-    const s = createMatch(3);
+    const s = createMatch(3, SMALL);
     addPlayer(s, createTeam(s)!.id, 'velociraptor', 'A');
     const d = s.dinos[0];
     d.abilityT = 0.2;
@@ -48,7 +49,7 @@ describe('dino codec', () => {
   });
 
   it('encodes carcasses with species, heading and food', () => {
-    const s = createMatch(3);
+    const s = createMatch(3, SMALL);
     s.food = [makeCarcass(77, 'velociraptor', 10.4, 20.6, 1.234)];
     const [t] = carcassTuples(s);
     expect(t[0]).toBe(77);

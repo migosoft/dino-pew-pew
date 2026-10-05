@@ -4,10 +4,11 @@ import { createMatch, step } from '../../src/sim/sim';
 import { addPlayer, createTeam } from '../../src/sim/players';
 import { SNAPSHOT_EVERY, buildSnapshot, type SnapshotMsg, type TimedEvent } from '../../src/net/protocol';
 import { INTERP_TICKS, Mirror } from '../../src/client/net/Mirror';
+import { SMALL } from '../helpers';
 
 /** Run a server-side match and feed its snapshots into a client mirror with fake timing. */
 function simulate(ticks: number) {
-  const s = createMatch(9);
+  const s = createMatch(9, SMALL);
   const p = addPlayer(s, createTeam(s)!.id, 'triceratops', 'A');
   const mirror = new Mirror();
   const inputs = new Map([[p.id, { throttle: 1, turn: 0.2, aimWorld: { x: 0, y: 0 }, fire: true }]]);

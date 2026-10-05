@@ -13,6 +13,7 @@ import {
 } from '../../src/sim/players';
 import { applyDamage } from '../../src/sim/systems/damage';
 import { updateProjectiles } from '../../src/sim/systems/projectiles';
+import { SMALL } from '../helpers';
 
 const DT = 1 / 60;
 
@@ -21,7 +22,7 @@ function run(s: GameState, seconds: number, inputs = new Map<number, InputComman
 }
 
 function setup() {
-  const s = createMatch(77);
+  const s = createMatch(77, SMALL);
   const red = createTeam(s)!;
   const blue = createTeam(s)!;
   const a = addPlayer(s, red.id, 'triceratops', 'A');
@@ -41,7 +42,7 @@ function toMidfield(s: GameState, id: number, dx = 0) {
 
 describe('teams', () => {
   it('assigns separate base camps, up to the team limit', () => {
-    const s = createMatch(1);
+    const s = createMatch(1, SMALL);
     const teams = Array.from({ length: MAX_TEAMS }, () => createTeam(s)!);
     expect(new Set(teams.map((t) => t.slot)).size).toBe(MAX_TEAMS);
     expect(createTeam(s)).toBeNull();

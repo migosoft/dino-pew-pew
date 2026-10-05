@@ -6,9 +6,9 @@ import { createDino, isDeepWater, isFree, isRiver } from './world';
 import { BASE_CLEAR } from './worldgen';
 import { makeWildAi } from './ai';
 
-/** Wild population scales with the number of riders (sized for the 4096 px map). */
-export function wildTarget(players: number): number {
-  return Math.min(110, 28 + 5 * players);
+/** Wild population scales with the riders and with the map area (tuned on a 4096 px map; at most 2.5x that). */
+export function wildTarget(players: number, area = 4096 * 4096): number {
+  return Math.round(Math.min(110, 28 + 5 * players) * Math.min(2.5, area / (4096 * 4096)));
 }
 /** Fraction of the wild population that are herbivores. */
 export const HERBIVORE_SHARE = 0.7;
@@ -48,7 +48,7 @@ export function spawnWild(state: GameState): boolean {
 
 /** Fill the world up to its wild population target at once (match start). */
 export function populateWild(state: GameState): void {
-  const target = wildTarget(state.players.length);
+  const target = wildTarget(state.players.length, state.world.width * state.world.height);
   for (let i = 0; i < target; i++) if (!spawnWild(state)) break;
 }
 
@@ -58,5 +58,5 @@ export function updateEcology(state: GameState, dt: number, timer: { t: number }
   if (timer.t > 0) return;
   timer.t = WILD_SPAWN_INTERVAL;
   const wild = state.dinos.filter((d) => d.alive && d.team === WILD_TEAM).length;
-  if (wild < wildTarget(state.players.length)) spawnWild(state);
+  if (wild < wildTarget(state.players.length, state.world.width * state.world.height)) spawnWild(state);
 }

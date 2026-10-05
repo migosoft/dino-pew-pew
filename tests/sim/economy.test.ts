@@ -15,9 +15,10 @@ import {
   buyUpgrade,
   upgradeCost,
 } from '../../src/sim/upgrades';
+import { SMALL } from '../helpers';
 
 function setup() {
-  const s = createMatch(31);
+  const s = createMatch(31, SMALL);
   const red = createTeam(s)!;
   const blue = createTeam(s)!;
   const a = addPlayer(s, red.id, 'triceratops', 'A');

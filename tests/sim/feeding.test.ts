@@ -9,6 +9,7 @@ import { applyDamage } from '../../src/sim/systems/damage';
 import { CARCASS_DECAY_SECS, FOOD, REGROW_DELAY, addCarcassFor, canEat, feed, findFood, makeCarcass, updateFood } from '../../src/sim/systems/feeding';
 import { foodNear } from '../../src/sim/spatial';
 import { makeRng, randRange } from '../../src/sim/rng';
+import { SMALL } from '../helpers';
 
 const DT = 1 / 60;
 
@@ -145,7 +146,7 @@ describe('eating', () => {
 
 describe('carcasses in the world', () => {
   it('a killed dino leaves a carcass of its species', () => {
-    const s = createMatch(8);
+    const s = createMatch(8, SMALL);
     const p = addPlayer(s, createTeam(s)!.id, 'velociraptor', 'A');
     const d = s.dinos.find((x) => x.playerId === p.id)!;
     d.x = d.px = s.world.width / 2; // out of the safe zone
@@ -159,7 +160,7 @@ describe('carcasses in the world', () => {
 
   it('the world starts with a handful of old carcasses and plenty of plants, none in base camps', () => {
     for (const seed of [1, 2, 3, 4, 5]) {
-      const w = generateWorld(seed);
+      const w = generateWorld(seed, SMALL);
       const n = w.food.filter((f) => f.kind === 'carcass').length;
       expect(n).toBeGreaterThanOrEqual(MIN_WORLD_CARCASSES);
       expect(n).toBeLessThanOrEqual(MAX_WORLD_CARCASSES);
@@ -170,7 +171,7 @@ describe('carcasses in the world', () => {
   });
 
   it('a rider standing still at food heals over time through the full step()', () => {
-    const s = createMatch(8);
+    const s = createMatch(8, SMALL);
     const p = addPlayer(s, createTeam(s)!.id, 'triceratops', 'A');
     const d = s.dinos.find((x) => x.playerId === p.id)!;
     const bush = s.food.find((f) => f.kind === 'bush')!;
@@ -213,7 +214,7 @@ describe('food grid', () => {
   }
 
   it('finds the same food as a full scan, on a real world', () => {
-    const s = createMatch(3);
+    const s = createMatch(3, SMALL);
     const rng = makeRng(9);
     const d = createDino(s, 'triceratops', 'wild', 0, 0, 0);
     const out: number[] = [];
@@ -232,7 +233,7 @@ describe('food grid', () => {
   });
 
   it('sees carcasses as they appear and rot away', () => {
-    const s = createMatch(3);
+    const s = createMatch(3, SMALL);
     const d = createDino(s, 'trex', 'wild', 1000, 1000, 0);
     d.hp = 10;
     const victim = createDino(s, 'velociraptor', 'wild', 1010, 1000, 0);
