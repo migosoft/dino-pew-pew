@@ -2,7 +2,7 @@ import type { GameState } from './types';
 import { WILD_TEAM } from './types';
 import { getDino } from './defs/dinos';
 import { rand, randRange } from './rng';
-import { createDino, isDeepWater, isFree } from './world';
+import { createDino, isDeepWater, isFree, isRiver } from './world';
 import { BASE_CLEAR } from './worldgen';
 import { makeWildAi } from './ai';
 
@@ -34,7 +34,7 @@ export function spawnWild(state: GameState): boolean {
   for (let attempt = 0; attempt < 40; attempt++) {
     const x = randRange(state.rng, 120, width - 120);
     const y = randRange(state.rng, 120, height - 120);
-    if (!isFree(state.world, x, y, def.radius + 6) || isDeepWater(state.world, x, y)) continue;
+    if (!isFree(state.world, x, y, def.radius + 6) || isDeepWater(state.world, x, y) || isRiver(state.world, x, y)) continue;
     if (bases.some((b) => (b.x - x) ** 2 + (b.y - y) ** 2 < (BASE_CLEAR + 80) ** 2)) continue;
     if (riders.some((r) => (r.x - x) ** 2 + (r.y - y) ** 2 < SPAWN_AWAY_FROM_RIDERS ** 2)) continue;
     if (wild.some((w) => (w.x - x) ** 2 + (w.y - y) ** 2 < 50 * 50)) continue;

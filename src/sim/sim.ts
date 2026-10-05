@@ -3,7 +3,7 @@ import { getDino } from './defs/dinos';
 import { makeRng } from './rng';
 import { generateWorld, type WorldGenOptions } from './worldgen';
 import { updatePlayers } from './players';
-import { moveDino, terrainSpeedFactor } from './systems/movement';
+import { applyCurrent, moveDino, terrainSpeedFactor } from './systems/movement';
 import { resolveDinoContacts, resolveObstacles } from './systems/collision';
 import { selectFiringMounts, selectSideMounts, updateAim } from './systems/aiming';
 import { fireMounts } from './systems/firing';
@@ -64,6 +64,8 @@ export function step(state: GameState, inputs: Map<number, InputCommand>, dt: nu
     const cmd = d.playerId !== null ? inputs.get(d.playerId) : d.ai ? computeWildCommand(state, d, dt) : undefined;
     // A running leap or dash steers the dino by itself; the rider can still aim and fire.
     const busy = updateAbility(state, d, dt);
+    // Rivers sweep small dinos along, whatever they are doing (a leap is in the air).
+    applyCurrent(state.world, d, dt);
     if (!cmd) {
       // No input (e.g. connection hiccup): roll to a stop.
       if (!busy) {

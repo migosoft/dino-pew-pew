@@ -45,35 +45,64 @@ export function baseSlots(width: number, height: number): Vec2[] {
 /** Share of the map covered by lakes: deep cores, and the shallow rims around them. */
 const LAKE_DEEP_SHARE = 0.08;
 const LAKE_SHALLOW_SHARE = 0.05;
+/** River current in the middle of the deep channel, px/s. It weakens toward the banks and over fords. */
+export const RIVER_SPEED = 36;
+/** Rivers are where the warped river noise is within these distances of 0.5. */
+const RIVER_DEEP = 0.018;
+const RIVER_WIDE = 0.036;
+
+interface WaterLayer {
+  /** Tile.Deep, Tile.Shallow, or 0 for land, per tile. */
+  tiles: Uint8Array;
+  /** River current per tile (vx, vy interleaved), px/s. Zero in lakes and on land. */
+  flow: Float32Array;
+}
 
 /**
- * Water per tile (Tile.Deep, Tile.Shallow, or 0 for land). Lakes are blobs of a slow noise,
- * cut at percentiles so every seed gets about the same amount of lake. Rivers follow a contour
- * line of a warped noise. Both have a shallow rim around a deep core, and fords break the deep
- * core of rivers so every dino can cross at full speed somewhere.
+ * Water per tile. Lakes are blobs of a slow noise, cut at percentiles so every seed gets about
+ * the same amount of lake. Rivers follow a contour line of a warped noise. Both have a shallow
+ * rim around a deep core, and fords break the deep core of rivers so every dino can cross.
+ * Rivers flow along their contour line (the noise gradient turned 90 degrees), so each river
+ * runs one way along its whole length. Lakes are still water.
  */
-function waterLayer(cols: number, rows: number, seed: number): Uint8Array {
+function waterLayer(cols: number, rows: number, seed: number): WaterLayer {
+  /** The warped river noise; its 0.5 contour is the middle of a river. */
+  const riverNoise = (x: number, y: number) => {
+    const wx = x + (fbm(x / 22, y / 22, seed + 505, 3) - 0.5) * 24;
+    const wy = y + (fbm(x / 22, y / 22, seed + 515, 3) - 0.5) * 24;
+    return fbm(wx / 90, wy / 90, seed + 606, 2);
+  };
   const lake = new Float32Array(cols * rows);
   for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) lake[y * cols + x] = fbm(x / 34, y / 34, seed + 404, 4);
   const sorted = Float32Array.from(lake).sort();
   const deepAt = sorted[Math.floor(sorted.length * (1 - LAKE_DEEP_SHARE))];
   const shallowAt = sorted[Math.floor(sorted.length * (1 - LAKE_DEEP_SHARE - LAKE_SHALLOW_SHARE))];
   const out = new Uint8Array(cols * rows);
+  const flow = new Float32Array(cols * rows * 2);
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
       const i = y * cols + x;
       let deep = lake[i] > deepAt;
       let shallow = lake[i] > shallowAt;
-      const wx = x + (fbm(x / 22, y / 22, seed + 505, 3) - 0.5) * 24;
-      const wy = y + (fbm(x / 22, y / 22, seed + 515, 3) - 0.5) * 24;
-      const river = Math.abs(fbm(wx / 90, wy / 90, seed + 606, 2) - 0.5);
+      const river = Math.abs(riverNoise(x, y) - 0.5);
       const ford = fbm(x / 10, y / 10, seed + 707, 2) > 0.66;
-      if (river < 0.018 && !ford) deep = true;
-      if (river < 0.036) shallow = true;
+      // Where a river runs into a lake, the lake wins: still water.
+      if (river < RIVER_WIDE && !shallow) {
+        const gx = riverNoise(x + 0.5, y) - riverNoise(x - 0.5, y);
+        const gy = riverNoise(x, y + 0.5) - riverNoise(x, y - 0.5);
+        const g = Math.hypot(gx, gy);
+        if (g > 0) {
+          const v = RIVER_SPEED * Math.min(1, 1.6 * (1 - river / RIVER_WIDE)) * (ford ? 0.6 : 1);
+          flow[i * 2] = (-gy / g) * v;
+          flow[i * 2 + 1] = (gx / g) * v;
+        }
+      }
+      if (river < RIVER_DEEP && !ford) deep = true;
+      if (river < RIVER_WIDE) shallow = true;
       out[i] = deep ? Tile.Deep : shallow ? Tile.Shallow : 0;
     }
   }
-  return out;
+  return { tiles: out, flow };
 }
 
 /** Deterministically build terrain and obstacles from a seed. */
@@ -97,12 +126,13 @@ export function generateWorld(seed: number, opts: WorldGenOptions = {}): World {
       else if (moist > 0.7) t = Tile.Mud;
       else if (lush > 0.62) t = Tile.Fern;
       else if (lush < 0.4) t = Tile.GrassDark;
-      if (water && water[y * cols + x]) {
+      if (water && water.tiles[y * cols + x]) {
         // Base camps stay dry.
         const px = (x + 0.5) * tileSize;
         const py = (y + 0.5) * tileSize;
         const dry = bases.some((b) => (b.x - px) ** 2 + (b.y - py) ** 2 < BASE_DRY * BASE_DRY);
-        if (!dry) t = water[y * cols + x];
+        if (dry) water.flow[(y * cols + x) * 2] = water.flow[(y * cols + x) * 2 + 1] = 0;
+        else t = water.tiles[y * cols + x];
       }
       tiles[y * cols + x] = t;
     }
@@ -132,6 +162,7 @@ export function generateWorld(seed: number, opts: WorldGenOptions = {}): World {
     width,
     height,
     tiles,
+    flow: water ? water.flow : null,
     obstacles,
     grid: [],
     gridCell: 64,

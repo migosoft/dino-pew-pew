@@ -23,6 +23,8 @@ const DINOS: Record<string, DinoDef> = {
     turnPenaltyAtSpeed: 0.4,
     hp: 100,
     wadeSpeed: 0.7,
+    // Four sturdy legs: river currents don't bother it.
+    currentSlow: 1,
     head: { offset: { x: 11, y: 0 }, maxYaw: 25 * DEG, yawSpeed: 2.8 },
     // The tail is drawn as links that bend from here (client/render/chains.ts).
     tail: { offset: { x: -7, y: 0 } },
@@ -72,6 +74,9 @@ const DINOS: Record<string, DinoDef> = {
     hp: 60,
     // Small: deep water slows it down the most.
     wadeSpeed: 0.25,
+    // Light: a river current slows it and carries it downstream.
+    currentSlow: 0.6,
+    currentDrift: 0.8,
     head: { offset: { x: 7, y: 0 }, maxYaw: 15 * DEG, yawSpeed: 4 },
     tail: { offset: { x: -5, y: 0 } },
     // Right mouse: a leap toward the cursor (over rocks too) that slams down on whoever is below.
@@ -122,6 +127,7 @@ const DINOS: Record<string, DinoDef> = {
     turnPenaltyAtSpeed: 0.5,
     hp: 220,
     wadeSpeed: 0.9,
+    currentSlow: 1,
     // The long neck and the head turn together from the shoulders.
     head: { offset: { x: 18, y: 0 }, maxYaw: 40 * DEG, yawSpeed: 1.8, under: true },
     tail: { offset: { x: -19, y: 0 } },

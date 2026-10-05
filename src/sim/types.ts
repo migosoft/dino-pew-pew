@@ -132,6 +132,10 @@ export interface DinoDef {
   seat?: Vec2;
   /** Fraction of maxSpeed kept in deep water (default 0.6). Big dinos wade better. */
   wadeSpeed?: number;
+  /** Fraction of maxSpeed kept in a river current (default 0.75; 1 = the current doesn't bother it). */
+  currentSlow?: number;
+  /** Share of the river current that carries the dino along, 0..1 (default 0; small dinos get swept away). */
+  currentDrift?: number;
 }
 
 export interface WeaponDef {
@@ -291,6 +295,8 @@ export interface World {
   width: number;
   height: number;
   tiles: Uint8Array;
+  /** River current per tile (vx, vy interleaved), px/s; null on maps without water. Use flowAt. */
+  flow: Float32Array | null;
   obstacles: Obstacle[];
   /** Spatial hash: cell index -> obstacle indices. */
   grid: number[][];

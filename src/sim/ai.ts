@@ -3,7 +3,7 @@ import { WILD_TEAM } from './types';
 import { getDino } from './defs/dinos';
 import { DEG, angleDiff, angleTo, clamp } from './math';
 import { rand, randRange } from './rng';
-import { findDino, isAirborne, isDeepWater, isFree } from './world';
+import { findDino, isAirborne, isDeepWater, isFree, isRiver } from './world';
 import { BASE_RADIUS, isInOwnBase } from './players';
 import { canEat } from './systems/feeding';
 import { isHostile } from './systems/melee';
@@ -40,14 +40,18 @@ const PROBE_ANGLES = [0, 30, -30, 60, -60, 95, -95, 140, -140].map((a) => a * DE
 
 /**
  * A heading near `desired` that is not blocked a short distance ahead. Calm dinos also keep
- * out of deep water if they can; hunting, charging and fleeing ones wade straight in.
+ * out of deep water if they can (and out of rivers, if the current would sweep them away);
+ * hunting, charging and fleeing ones wade straight in.
  */
 function clearHeading(state: GameState, d: Dino, desired: number, sideBias: number): number {
   const ai = d.ai!;
-  const r = getDino(d.kind).radius;
+  const def = getDino(d.kind);
+  const r = def.radius;
+  const swept = (def.currentDrift ?? 0) > 0;
+  const wet = (x: number, y: number) => isDeepWater(state.world, x, y) || (swept && isRiver(state.world, x, y));
   const open = (h: number) => [16, 32].every((dist) => isFree(state.world, d.x + Math.cos(h) * dist, d.y + Math.sin(h) * dist, r * 0.9));
-  const dry = (h: number) => [24, 48].every((dist) => !isDeepWater(state.world, d.x + Math.cos(h) * dist, d.y + Math.sin(h) * dist));
-  if ((ai.mode === 'wander' || ai.mode === 'graze') && !isDeepWater(state.world, d.x, d.y)) {
+  const dry = (h: number) => [24, 48].every((dist) => !wet(d.x + Math.cos(h) * dist, d.y + Math.sin(h) * dist));
+  if ((ai.mode === 'wander' || ai.mode === 'graze') && !wet(d.x, d.y)) {
     for (const a of PROBE_ANGLES) {
       const h = desired + a * sideBias;
       if (!open(h) || !dry(h)) continue;

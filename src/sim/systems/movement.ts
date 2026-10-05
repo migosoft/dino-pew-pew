@@ -1,14 +1,31 @@
 import type { Dino, DinoDef, InputCommand, World } from '../types';
 import { getDino } from '../defs/dinos';
 import { approach, clamp } from '../math';
-import { isDeepWater } from '../world';
+import { flowAt, isAirborne, isDeepWater } from '../world';
 
 /** Fraction of top speed kept in deep water by species that don't set `wadeSpeed`. */
 export const DEFAULT_WADE_SPEED = 0.6;
+/** Fraction of top speed kept in a river current by species that don't set `currentSlow`. */
+export const DEFAULT_CURRENT_SLOW = 0.75;
 
-/** Top-speed factor for a dino at its position: deep water slows it to its wadeSpeed, shallow water doesn't. */
+/**
+ * Top-speed factor for a dino at its position: deep water slows it to its wadeSpeed (shallow
+ * water doesn't), and a river current slows it further by its currentSlow.
+ */
 export function terrainSpeedFactor(world: World, d: Dino, def: DinoDef = getDino(d.kind)): number {
-  return isDeepWater(world, d.x, d.y) ? (def.wadeSpeed ?? DEFAULT_WADE_SPEED) : 1;
+  const wade = isDeepWater(world, d.x, d.y) ? (def.wadeSpeed ?? DEFAULT_WADE_SPEED) : 1;
+  const f = flowAt(world, d.x, d.y);
+  const river = f.x * f.x + f.y * f.y > 1 ? (def.currentSlow ?? DEFAULT_CURRENT_SLOW) : 1;
+  return wade * river;
+}
+
+/** A river carries dinos that set `currentDrift` along with it (not while they are in the air). */
+export function applyCurrent(world: World, d: Dino, dt: number, def: DinoDef = getDino(d.kind)): void {
+  const drift = def.currentDrift ?? 0;
+  if (drift <= 0 || isAirborne(d)) return;
+  const f = flowAt(world, d.x, d.y);
+  d.x += f.x * drift * dt;
+  d.y += f.y * drift * dt;
 }
 
 /**

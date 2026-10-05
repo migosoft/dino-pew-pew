@@ -1,4 +1,4 @@
-import { Tile, type Dino, type GameState, type Obstacle, type PlayerState, type Team, type TeamState, type World } from './types';
+import { Tile, type Dino, type GameState, type Obstacle, type PlayerState, type Team, type TeamState, type Vec2, type World } from './types';
 import { getDino } from './defs/dinos';
 import { valueNoise } from './noise';
 
@@ -117,13 +117,18 @@ const TILE_WOBBLE = 14;
  * this same lookup, so the shoreline you see is the shoreline the simulation uses.
  */
 export function tileAt(world: World, x: number, y: number): number {
+  return world.tiles[tileIndexAt(world, x, y)];
+}
+
+/** Index of the tile under a world point, with the same wobbled borders as tileAt. */
+export function tileIndexAt(world: World, x: number, y: number): number {
   const ix = Math.floor(x);
   const iy = Math.floor(y);
   const jx = (valueNoise(ix / 7, iy / 7, world.seed + 3) - 0.5) * TILE_WOBBLE;
   const jy = (valueNoise(ix / 7, iy / 7, world.seed + 4) - 0.5) * TILE_WOBBLE;
   const tx = Math.min(world.cols - 1, Math.max(0, Math.floor((ix + jx) / world.tileSize)));
   const ty = Math.min(world.rows - 1, Math.max(0, Math.floor((iy + jy) / world.tileSize)));
-  return world.tiles[ty * world.cols + tx];
+  return ty * world.cols + tx;
 }
 
 export function isWater(world: World, x: number, y: number): boolean {
@@ -133,4 +138,21 @@ export function isWater(world: World, x: number, y: number): boolean {
 
 export function isDeepWater(world: World, x: number, y: number): boolean {
   return tileAt(world, x, y) === Tile.Deep;
+}
+
+const STILL: Vec2 = { x: 0, y: 0 };
+
+/** River current at a world point, px/s (zero on land and in lakes). Do not modify the result. */
+export function flowAt(world: World, x: number, y: number): Vec2 {
+  if (!world.flow) return STILL;
+  const i = tileIndexAt(world, x, y) * 2;
+  const vx = world.flow[i];
+  const vy = world.flow[i + 1];
+  return vx === 0 && vy === 0 ? STILL : { x: vx, y: vy };
+}
+
+/** True in flowing river water. */
+export function isRiver(world: World, x: number, y: number): boolean {
+  const f = flowAt(world, x, y);
+  return f.x * f.x + f.y * f.y > 1;
 }
