@@ -210,6 +210,14 @@ export class GameScene extends Phaser.Scene {
         if (cam.worldView.contains(e.x, e.y)) cam.shake(90, 0.003);
         break;
       }
+      case 'bite': {
+        if (this.waterView.isWet(e.x, e.y)) this.waterView.splash(e.x, e.y, 10);
+        this.fx.bite(e.x, e.y, e.targetId !== null);
+        const cam = this.cameras.main;
+        if (e.targetId !== null && this.dinoViews.get(e.targetId)?.lastView.playerId === this.net.welcome!.playerId) cam.shake(160, 0.006);
+        else if (cam.worldView.contains(e.x, e.y)) cam.shake(70, 0.002);
+        break;
+      }
       case 'slam': {
         const cam = this.cameras.main;
         if (this.waterView.isWet(e.x, e.y)) this.waterView.splash(e.x, e.y, 24);

@@ -220,7 +220,7 @@ const DINOS: Record<string, DinoDef> = {
       {
         id: 'headGunL',
         parent: 'head',
-        offset: { x: 0, y: -8 },
+        offset: { x: 4, y: -8 },
         baseAngle: 0,
         arcHalf: 20 * DEG,
         turnSpeed: 4,
@@ -230,7 +230,7 @@ const DINOS: Record<string, DinoDef> = {
       {
         id: 'headGunR',
         parent: 'head',
-        offset: { x: 0, y: 8 },
+        offset: { x: 4, y: 8 },
         baseAngle: 0,
         arcHalf: 20 * DEG,
         turnSpeed: 4,

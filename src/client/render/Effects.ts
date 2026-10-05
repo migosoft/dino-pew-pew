@@ -62,6 +62,17 @@ export class Effects {
     this.dust.explode(7, x, y);
   }
 
+  /** Jaws snapping shut: sparks and blood on a hit, a puff of dust on a miss. */
+  bite(x: number, y: number, hit: boolean): void {
+    if (hit) {
+      this.sparks.explode(10, x, y);
+      for (let i = 0; i < 3; i++) {
+        const drop = this.scene.add.image(Math.round(x + (Math.random() - 0.5) * 8), Math.round(y + (Math.random() - 0.5) * 6), 'meat').setDepth(DEPTH.decal);
+        this.scene.tweens.add({ targets: drop, alpha: 0, delay: 3000, duration: 1500, onComplete: () => drop.destroy() });
+      }
+    } else this.dust.explode(4, x, y);
+  }
+
   /** Leap landing: a ring of dust and sparks. */
   slam(x: number, y: number): void {
     for (let i = 0; i < 12; i++) {

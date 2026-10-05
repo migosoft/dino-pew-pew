@@ -6,7 +6,7 @@ import { checker, ellipse, hash2, line, litShade, makeCanvas, outline, px, rect,
 /** Food stage by remaining food fraction: 0 = full, 1 = half eaten, 2 = nearly gone. */
 export type FoodStage = 0 | 1 | 2;
 /** Species with carcass art. */
-export const CARCASS_KINDS = ['triceratops', 'velociraptor', 'brontosaurus'] as const;
+export const CARCASS_KINDS = ['triceratops', 'velociraptor', 'brontosaurus', 'trex'] as const;
 export type CarcassKind = (typeof CARCASS_KINDS)[number];
 
 export const BUSH_VARIANTS = 3;
@@ -644,6 +644,91 @@ function drawVelociraptorCarcass(stage: FoodStage): HTMLCanvasElement {
   return compose(out, b);
 }
 
+function drawTrexCarcass(stage: FoodStage): HTMLCanvasElement {
+  const W = 64;
+  const H = 40;
+  const out = makeCanvas(W, H);
+  const b = makeCanvas(W, H);
+  const cx = 32;
+  const cy = 18;
+  const tailOff = (x: number) => Math.round(-(((-10 - x) / 20) ** 2) * 4);
+
+  if (stage === 2) {
+    // Tail vertebrae and spine.
+    for (let x = -30; x <= -10; x++) px(b, cx + x, cy + tailOff(x), x % 2 === 0 ? BONE : BONE_DARK);
+    line(b, cx - 10, cy, cx + 9, cy - 3, BONE, 1);
+    // Big ribcage.
+    for (let r = -6; r <= 6; r += 3) {
+      const L = 4 + 5 * Math.sqrt(Math.max(0, 1 - (r / 8) ** 2));
+      line(b, cx + r, cy - 2, cx + r + 1, cy - 2 + L, BONE, 1);
+      px(b, cx + r + 1, cy - 2 + L, BONE_DARK);
+    }
+    // Pelvis and the heavy hind leg bones.
+    ellipse(b, cx - 8, cy, 3, 2, (nx, ny, x, y) => litShade(nx, ny, x, y, BONE_DARK, BONE, BONE_HI));
+    line(b, cx - 7, cy + 1, cx - 5, cy + 9, BONE, 2);
+    line(b, cx - 5, cy + 9, cx - 1, cy + 14, BONE, 1);
+    px(b, cx, cy + 14, BONE_DARK);
+    line(b, cx - 18, cy + 6, cx - 13, cy + 11, BONE, 2);
+    // The huge skull with its teeth.
+    ellipse(b, cx + 15, cy - 3, 6.5, 3.6, (nx, ny, x, y) => litShade(nx, ny, x, y, BONE_DARK, BONE, BONE_HI));
+    px(b, cx + 13, cy - 4, SOCKET);
+    px(b, cx + 14, cy - 4, SOCKET);
+    px(b, cx + 19, cy - 3, SOCKET);
+    line(b, cx + 10, cy + 1, cx + 21, cy + 1, BONE_DARK, 1);
+    for (let x = 11; x <= 20; x += 2) px(b, cx + x, cy, BONE_HI);
+    px(b, cx - 2, cy + 1, MEAT_DARK);
+    px(b, cx - 15, cy - 1, HIDE_DARK);
+    return compose(out, b);
+  }
+
+  bloodPool(out, cx, cy + 6, stage === 0 ? 15 : 18, stage === 0 ? 6 : 7.5, 151 + stage);
+
+  // Massive hind legs sticking out toward +y, three-toed feet.
+  for (const [x0, x1] of [
+    [-6, -3],
+    [-10, -13],
+  ]) {
+    if (stage === 1 && x0 === -10) {
+      line(b, cx + x0, cy + 3, cx + x1, cy + 10, BONE, 2);
+      px(b, cx + x0, cy + 4, MEAT);
+      continue;
+    }
+    line(b, cx + x0, cy + 3, cx + x1, cy + 11, HIDE_DARK, 4);
+    line(b, cx + x0 - 1, cy + 3, cx + x1 - 1, cy + 11, HIDE, 1);
+    for (const t of [-2, 0, 2]) px(b, cx + x1 + t, cy + 14, BONE_DARK);
+  }
+  // Thick tail.
+  taper(b, cx, cy, -30, -8, (x) => 0.7 + ((x + 30) / 22) * 3.6, tailOff, (ny, x) => (ny < -0.2 && x % 3 === 0 ? HIDE_DARK : ny < -0.3 ? HIDE_LIGHT : ny > 0.4 ? HIDE_DARK : HIDE));
+  // Bulky body on its side.
+  ellipse(b, cx - 1, cy, 10, 6, (nx, ny, x, y) => {
+    if (ny > 0.5 && nx * nx + ny * ny < 0.85) return BELLY;
+    return litShade(nx, ny, x, y, HIDE_DARK, HIDE, HIDE_LIGHT);
+  });
+  for (let x = -8; x <= 6; x += 3) px(b, cx + x, cy - 5, HIDE_DARK);
+  // Tiny arm.
+  line(b, cx + 7, cy + 2, cx + 9, cy + 5, HIDE_DARK, 1);
+  px(b, cx + 10, cy + 5, BONE);
+  // The big head with its jaws open.
+  ellipse(b, cx + 15, cy - 3, 7, 4, (nx, ny, x, y) => litShade(nx, ny, x, y, HIDE_DARK, HIDE, HIDE_LIGHT));
+  line(b, cx + 10, cy + 2, cx + 21, cy + 3, HIDE_DARK, 2);
+  for (let x = 11; x <= 20; x += 2) {
+    px(b, cx + x, cy + 1, BONE);
+    px(b, cx + x, cy, BONE_HI);
+  }
+  px(b, cx + 13, cy - 5, '#100c08');
+
+  if (stage === 0) {
+    px(b, cx + 22, cy + 3, MEAT);
+    px(b, cx + 1, cy + 3, MEAT);
+    px(b, cx + 2, cy + 3, MEAT_LIGHT);
+  } else {
+    wound(b, cx - 1, cy + 0.5, 6, 3.8, 87);
+    for (const r of [-4, -1, 2, 5]) line(b, cx - 1 + r, cy - 2, cx - 1 + r, cy + 3, BONE, 1);
+    px(b, cx + 22, cy + 3, MEAT_DARK);
+  }
+  return compose(out, b);
+}
+
 function drawBrontosaurusCarcass(stage: FoodStage): HTMLCanvasElement {
   const W = 104;
   const H = 44;
@@ -743,5 +828,6 @@ function drawBrontosaurusCarcass(stage: FoodStage): HTMLCanvasElement {
  *  stage 0 = fresh carcass (hide intact, some blood), 1 = partly eaten (exposed red meat and ribs), 2 = mostly bones (bleached ribcage, skull, spine). */
 export function drawCarcass(kind: CarcassKind, stage: FoodStage): HTMLCanvasElement {
   if (kind === 'brontosaurus') return drawBrontosaurusCarcass(stage);
+  if (kind === 'trex') return drawTrexCarcass(stage);
   return kind === 'triceratops' ? drawTriceratopsCarcass(stage) : drawVelociraptorCarcass(stage);
 }

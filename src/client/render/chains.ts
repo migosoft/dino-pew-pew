@@ -1,6 +1,7 @@
 import { BRONTO_HEAD_LEN, BRONTO_NECK, BRONTO_TAIL } from './textures/brontosaurusArt';
 import { TRICERATOPS_TAIL } from './textures/dinoArt';
 import { RAPTOR_TAIL } from './textures/raptorArt';
+import { REX_TAIL } from './textures/trexArt';
 import type { ChainSegment, ChainStyle } from './textures/chainArt';
 
 /**
@@ -25,6 +26,7 @@ export const CHAINS: Record<string, ChainSpec> = {
   },
   triceratops: { tail: { segs: TRICERATOPS_TAIL, style: { marks: 'none' } } },
   velociraptor: { tail: { segs: RAPTOR_TAIL, style: { marks: 'stripe', crest: true } } },
+  trex: { tail: { segs: REX_TAIL, style: { marks: 'spot' } } },
 };
 
 /** Total length of a chain of links. */

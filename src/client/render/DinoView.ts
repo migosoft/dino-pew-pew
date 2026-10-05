@@ -23,6 +23,8 @@ const SWAY_WAVE = 0.8;
  * rate (per second), so a turning dino's tail swings round behind it, the tip last.
  */
 const TRAIL_RATE = 20;
+/** How far (px) the head shoots forward during a bite. */
+const BITE_REACH = 5;
 /** Shadow strength (the per-piece shadow textures of other species use the same). */
 const SHADOW_ALPHA = 0.32;
 
@@ -167,8 +169,13 @@ export class DinoView {
 
     if (this.chain) this.updateChain(d, z, pose, f, shadowAlpha, sx, sy, h);
     if (this.head && def.head && !this.chain?.spec.neck) {
-      const hp = localToWorld(d, heading, def.head.offset);
+      // A bite thrusts the head forward with the jaws gaping, then snaps them shut.
+      const biteU = d.abilityT >= 0 && ab?.kind === 'bite' ? d.abilityT / ab.duration : -1;
+      const push = biteU >= 0 ? Math.sin(Math.PI * Math.min(1, biteU)) * BITE_REACH : 0;
+      const hp = localToWorld(d, heading, { x: def.head.offset.x + push, y: def.head.offset.y });
       const hf = frameForAngle(heading + d.headYaw, DIRS);
+      const gaping = biteU > 0.1 && biteU < 0.5;
+      this.head.setTexture(gaping ? `${d.kind}_headBite_${this.palette}` : `${d.kind}_head_${this.palette}`, hf);
       this.head.setFrame(hf).setPosition(sx(hp.x), sy(hp.y)).setDepth(def.head.under ? z - 0.05 : z + 0.2);
       this.headArmor?.setFrame(hf).setPosition(sx(hp.x), sy(hp.y)).setDepth(z + 0.22);
     }

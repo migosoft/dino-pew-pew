@@ -30,6 +30,7 @@ import { WAVE_VARIANTS, drawCurrentStreak, drawDroplet, drawFish, drawFoamRing, 
 import { FONT_CHARS, FONT_H, FONT_W, drawFont } from './font';
 import { drawRaptorBody, drawRaptorHead, drawRaptorHeadArmor, drawRaptorSaddleArmor, drawRaptorSideGun } from './raptorArt';
 import { drawBroadsideGun, drawBrontosaurusBody, drawBrontosaurusHead, drawBrontosaurusPlatform, drawTailGun } from './brontosaurusArt';
+import { drawRexHeadGun, drawRexShoulderCannon, drawTrexBody, drawTrexHead, drawTrexHeadArmor, drawTrexSaddleArmor } from './trexArt';
 import { drawChainSegment } from './chainArt';
 import { CHAINS } from '../chains';
 import { BUSH_VARIANTS, CARCASS_KINDS, FERN_VARIANTS, drawBush, drawCarcass, drawFernPatch, type FoodStage } from './foodArt';
@@ -83,6 +84,13 @@ export function generateTextures(scene: Phaser.Scene): void {
       addStrip(scene, `velociraptor_headArmor_${key}`, drawRaptorHeadArmor(pal), DIRS);
     }
     bodyAndHead('brontosaurus', (pose) => drawBrontosaurusBody(pal, pose), drawBrontosaurusHead(pal));
+    bodyAndHead('trex', (pose) => drawTrexBody(pal, pose), drawTrexHead(pal));
+    // Jaws gaping, shown during a bite (DinoView).
+    addStrip(scene, `trex_headBite_${key}`, drawTrexHead(pal, true), DIRS);
+    if (key !== 'wild') {
+      addStrip(scene, `trex_armor_${key}`, drawTrexSaddleArmor(pal), DIRS);
+      addStrip(scene, `trex_headArmor_${key}`, drawTrexHeadArmor(pal), DIRS);
+    }
     for (const [kind, spec] of Object.entries(CHAINS)) {
       for (const [part, chain] of [['neck', spec.neck], ['tail', spec.tail]] as const) {
         chain?.segs.forEach((seg, i) => {
@@ -101,6 +109,8 @@ export function generateTextures(scene: Phaser.Scene): void {
   addStrip(scene, 'weapon_raptorSideGun', drawRaptorSideGun(), DIRS);
   addStrip(scene, 'weapon_broadsideGun', drawBroadsideGun(), DIRS);
   addStrip(scene, 'weapon_tailGun', drawTailGun(), DIRS);
+  addStrip(scene, 'weapon_rexHeadGun', drawRexHeadGun(), DIRS);
+  addStrip(scene, 'weapon_rexShoulderCannon', drawRexShoulderCannon(), DIRS);
 
   const stages: FoodStage[] = [0, 1, 2];
   for (const st of stages) {
