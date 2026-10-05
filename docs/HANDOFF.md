@@ -1,6 +1,6 @@
 # Dino Pew Pew: Handoff
 
-**Status (2026-10-05):** everything is on `master` and pushed (`origin/master` = `fbd0b56`, the merge of PR #1, the camp siege). All 186 tests pass, `tsc` is clean and `npm run build` passes. There are no open branches; `origin/camp-siege` is merged and can be deleted. After that merge, the game was renamed from "Dinoriders" to **Dino Pew Pew**, after the repo `migosoft/dino-pew-pew` (see the naming gotcha).
+**Status (2026-10-05):** everything is on `master` and pushed (`origin/master` = `fbd0b56`, the merge of PR #1, the camp siege). All 191 tests pass, `tsc` is clean and `npm run build` passes. There are no open branches; `origin/camp-siege` is merged and can be deleted. After that merge, the game was renamed from "Dinoriders" to **Dino Pew Pew**, after the repo `migosoft/dino-pew-pew` (see the naming gotcha).
 
 This document is for whoever picks the project up next. It covers the current state, the decisions that are still open, how the code fits together, and what to watch out for. How to play is in [README.md](../README.md). The design history is in [docs/superpowers/specs/](superpowers/specs/) and the implementation plans are in [docs/superpowers/plans/](superpowers/plans/). Older per-phase notes are in git history (`git log -- docs/HANDOFF.md`).
 
@@ -38,6 +38,7 @@ tests/       vitest: sim/, net/, server/ (real WebSockets on port 0), client/ (p
   - **`Match.state` is null** while an unlocked server has no settings. Code that touches it must check.
   - The first valid `join` that carries a `setup` builds the world (`startRound`). When the last player leaves an unlocked server, both go back to null.
 - When the `over` timer runs out, `nextRound` builds a fresh `GameState` (RANDOM gets a new seed; a fixed map always uses its own) and re-adds every connected player. Each client gets a new `welcome`, and `GameScene` restarts itself on the same connection. Building an 8192 px world takes 0.3–0.8 s and blocks the tick loop once per round.
+- Each client's inputs wait in a queue (at most 6, oldest dropped), and every tick applies one. With no input waiting, the last one repeats. Snapshots `ack` the seq applied on the latest tick.
 - `Match` calls `step(state, inputsByPlayerId, DT)` at 60 Hz. Every 3rd tick (20/s) it broadcasts a snapshot holding:
   - every live dino;
   - players and teams, left out while unchanged;
@@ -48,14 +49,18 @@ tests/       vitest: sim/, net/, server/ (real WebSockets on port 0), client/ (p
 - `welcome` carries all carcasses, every plant that isn't full, and `map`, `teams` and `tiles`, so the client can call `worldOptionsFor` and regenerate the same world.
 
 **Client:**
-- It never runs the sim. It regenerates the terrain from the seed and the map settings.
+- It regenerates the terrain from the seed and the map settings.
+- **Prediction (`Predictor.ts`):** the client runs the sim for one thing only, its own rider's driving and aim.
+  - Every 60 Hz step samples one input, sends it and moves a local copy with `stepDino`. That is `driveDino`, `updateAim` and the second obstacle pass, in the same order as `step()`.
+  - Each snapshot resets the copy to the server's state at `ack` and replays the newer inputs.
+  - The visible difference glides away over about 100 ms. Corrections over 160 px jump.
+  - Not predicted: running abilities (the server's state is shown), pushes, knockback and firing.
 - The ground is drawn in 256 px chunks around the camera within a per-frame budget (`GroundChunks`). Obstacles, canopies and plants sit in 512 px buckets, and only those near the camera are visible (`BucketGrid`).
 - It renders about 100 ms in the past, interpolating between snapshots (`Mirror`, `INTERP_TICKS = 6`).
 - Projectiles are simulated from their `shot` events (they fly straight) and removed on `hit`/`impact`. Tower shots are `shot` events with `dinoId` = the structure id and `mount` = −1.
 
 **AI and players share one interface:** riders send an `InputCommand` (throttle, turn, aim point, fire, ability). Wild dinos produce the same command from `computeWildCommand` (`ai.ts`). Movement, eating, melee and abilities are shared systems.
 
-**Prepared, not built:** client-side prediction. Inputs carry `seq`, and snapshots carry `ack`.
 
 **Rule for new client-visible state:** add it to `GameState` (`src/sim/types.ts`), then to the encode/decode in `protocol.ts`, then to a round-trip test in `tests/net/protocol.test.ts`.
 
@@ -85,7 +90,7 @@ tests/       vitest: sim/, net/, server/ (real WebSockets on port 0), client/ (p
 ```
 npm install
 npm run dev          # server :8080 (tsx watch) + Vite :5173 (proxies /api and /ws); play at :5173
-npm test             # 186 tests, about 5 s (longer under load)
+npm test             # 191 tests, about 5 s (longer under load)
 npm run build        # tsc + vite (dist/) + esbuild server bundle (dist-server/server.cjs)
 docker compose up --build -d   # production, http://localhost:8080
 ```
@@ -95,7 +100,7 @@ docker compose up --build -d   # production, http://localhost:8080
 - `TEAMS` (2–4) and `MAP` (`random` or a map id such as `crossing`): either one presets and locks the round settings, so nobody sees the setup screen. `TEAMS=2 MAP=crossing` is the quickest setup for browser checks.
 
 **Browser testing.** There is no browser driver in the repo (playwright isn't installed). What works on this machine:
-- **`?debug`** exposes `window.dinoriders = { scene, net }`. `/?preview` (and `?preview=<kind>`, `?preview=camp`, `&zoom=N&focus=row,col`) shows the art sheets.
+- **`?debug`** exposes `window.dinoriders = { scene, net }`. It also shows a bottom-left line: `RTT` (input to its first ack, including up to ~65 ms of tick and snapshot wait), snapshot `JIT`ter, `FPS`, the last prediction correction `ERR` in px, and `PRED`/`SERVER`. **`?debug&lag=N`** adds N ms of round trip in the client, to try a remote server's latency locally. `/?preview` (and `?preview=<kind>`, `?preview=camp`, `&zoom=N&focus=row,col`) shows the art sheets.
 - **Screenshots:** `msedge --headless=new --disable-gpu --window-size=1728,1080 --virtual-time-budget=8000 --user-data-dir=<fresh tmp dir> --screenshot=<out.png> "<url>"`. Edge is at `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`.
   - Pipe stderr (`2>&1 | tail -1`); with stderr sent to `/dev/null`, Edge sometimes writes nothing.
   - Use a new `--user-data-dir` per run.
@@ -117,6 +122,7 @@ docker compose up --build -d   # production, http://localhost:8080
 - **vitest and the drive letter:** running vitest from `c:\…` (lowercase) fails with "Cannot read properties of undefined (reading 'config')". Run it from `C:\…`.
 - **The user's Docker container usually holds :8080**, so `npm run dev` fails with EADDRINUSE on the server, and Vite silently proxies to the old container. Leave the container alone and run `PORT=8090 npx tsx src/server/main.ts` together with `GAME_SERVER=http://localhost:8090 npx vite --port 5174`.
 - **Docker port mapping on Windows:** right after a local server on :8080 is killed, Docker can start the container without publishing the port (`docker compose ps` shows `8080/tcp` with no `0.0.0.0:`). Run `docker compose down`, wait a few seconds, then `up -d`.
+- **Rider movement runs on both server and client** (`driveDino`, `stepDino` in `Predictor.ts`). If you change what `step()` does to a ridden dino's position, heading or aim, or the order it does it in, change `stepDino` too. `tests/client/predictor.test.ts` checks that the two agree exactly.
 - **World generation runs on both server and client**, so it must stay deterministic for `(seed, options)`: only `state.rng` or the seeded noise, never `Math.random`, and no engine-sensitive maths such as `Math.hypot` (use `Math.sqrt(dx*dx + dy*dy)`). After changing world generation, restart a non-watch server, or it simulates a different map than the clients draw.
 - **`src/sim` must not import Phaser.**
 - **Tests use the small map:** `SMALL` (4096 px) from `tests/helpers.ts` keeps unit tests fast. Building the full 8192 px world takes about 0.3 s in Node, much longer under load; `testTimeout` and `hookTimeout` are 20 s.
@@ -141,10 +147,11 @@ docker compose up --build -d   # production, http://localhost:8080
   | 4 teams, RANDOM 8192, wildlife at its target | 165 | 1.20 / 2.6 ms | 5.5 / 8.1 KB |
 
 - **Capacity:** server CPU is not the limit (a tick is about 1–2 ms of its 16.7 ms budget). Upload bandwidth is, because every player gets every dino. Before the siege, 16 players needed about 6 Mbit/s of upload; now that the wild population can reach 275, snapshots are about twice as large. A home connection carries roughly 16 players; a hosted server many more. Raising `MAX_PLAYERS` past 23 is safe on the server side, but test with real players first. For 50 or more, add area-of-interest culling.
+- **Steering latency** (headless Edge, `?lag=150`, CROSSING): from key down to a visible turn, 10 ms with prediction and 366 ms without (`predictor.apply` disabled). The correction readout stayed at 0 px while driving freely.
 - **Not tested:** more than 2 real browsers on separate machines, over a real network.
 
 ## Known limitations
-1. **No client-side prediction:** your own dino reacts one round trip late. That's fine on a LAN and sluggish above about 80 ms.
+1. **Prediction covers driving and aiming only.** Shots, hits, ability starts and pushes from other dinos still show one round trip (plus the 100 ms interpolation) late. Your own shots are drawn leaving your predicted position.
 2. **No player names:** players get `RIDER n`. The join screen has no text input.
 3. **Internet use** needs TLS in front of the server (see `docs/TASK-https-deploy.md`). There are no accounts and no persistence: a restart creates a new world.
 4. **No sound.**
@@ -166,7 +173,7 @@ Roughly in order of payoff within each group.
 - **Area-of-interest culling:** send each client only the dinos near its camera. This matters more now that wildlife can reach 275.
 - Send `kind` and `team` as small integers (a table in `welcome`), and `maxHp` only when a dino first appears.
 - Quantize event floats, and drop the `team` field from shot events (it can be derived).
-- Send input only when it changes, plus a ~10 Hz keepalive, instead of 60 Hz.
+- Inputs must stay at one per tick, because prediction replays them step by step. To save messages, batch 2–3 of them per message instead.
 
 **Client, per frame:**
 - Draw ground chunks in a worker or an `OffscreenCanvas`, to remove the p99 spikes. Chunks are also redrawn after every round restart.

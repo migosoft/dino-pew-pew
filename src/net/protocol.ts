@@ -1,7 +1,7 @@
 // Wire protocol shared by the game server and the browser client (JSON over WebSocket).
 // The server is authoritative: clients send inputs, the server sends snapshots.
-// Inputs carry a sequence number that snapshots acknowledge, so client-side
-// prediction/reconciliation can be added later without changing the protocol shape.
+// Inputs carry a sequence number that snapshots acknowledge (the input applied on the
+// latest tick), which client-side prediction uses to replay the inputs still in flight.
 
 import type { Dino, FoodSource, GameEvent, GameState, InputCommand, RoundPhase, Structure, StructureKind, Vec2 } from '../sim/types';
 import { validSettings, type MapInfo, type RoundSettings } from '../sim/maps';

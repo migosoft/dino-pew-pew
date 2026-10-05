@@ -4,7 +4,7 @@ import { makeRng } from './rng';
 import { generateWorld, type WorldGenOptions } from './worldgen';
 import { createTeam, updatePlayers } from './players';
 import { updateRound } from './rounds';
-import { applyCurrent, moveDino, terrainSpeedFactor } from './systems/movement';
+import { applyCurrent, driveDino } from './systems/movement';
 import { resolveDinoContacts, resolveObstacles } from './systems/collision';
 import { selectFiringMounts, selectSideMounts, updateAim } from './systems/aiming';
 import { fireMounts } from './systems/firing';
@@ -52,6 +52,9 @@ export function createMatch(seed: number, worldOpts?: WorldGenOptions, opts: Mat
   return state;
 }
 
+/** What a ridden dino without input does: roll to a stop. */
+const COAST: InputCommand = { throttle: 0, turn: 0, aimWorld: { x: 0, y: 0 }, fire: false };
+
 /**
  * Advance the simulation one fixed tick. `inputs` holds the latest command per
  * player id; ridden dinos without input coast. Events from this tick are left in
@@ -78,23 +81,16 @@ export function step(state: GameState, inputs: Map<number, InputCommand>, dt: nu
     const cmd = d.playerId !== null ? inputs.get(d.playerId) : d.ai ? computeWildCommand(state, d, dt) : undefined;
     // A running leap or dash steers the dino by itself; the rider can still aim and fire.
     const busy = updateAbility(state, d, dt);
-    // Rivers sweep small dinos along, whatever they are doing (a leap is in the air).
-    applyCurrent(state.world, d, dt);
+    // Rivers sweep small dinos along, whatever they are doing (a leap is in the air; driveDino
+    // applies the current itself). Without input (e.g. a connection hiccup) the dino rolls to a stop.
+    if (busy) applyCurrent(state.world, d, dt);
+    else driveDino(state, d, cmd ?? COAST, dt);
     if (!cmd) {
-      // No input (e.g. connection hiccup): roll to a stop.
-      if (!busy) {
-        moveDino(d, { throttle: 0, turn: 0, aimWorld: d, fire: false }, dt, terrainSpeedFactor(state.world, d));
-        resolveObstacles(state, d);
-      }
       feed(state, d, false, dt);
       continue;
     }
 
-    if (!busy) {
-      moveDino(d, cmd, dt, terrainSpeedFactor(state.world, d));
-      resolveObstacles(state, d);
-      tryStartAbility(state, d, cmd);
-    }
+    if (!busy) tryStartAbility(state, d, cmd);
     const def = getDino(d.kind);
     const errors = updateAim(d, def, cmd.aimWorld, dt);
     // Only riders operate the mounted weapons.

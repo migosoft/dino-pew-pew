@@ -68,6 +68,14 @@ export class Mirror {
     return this.snaps[this.snaps.length - 1];
   }
 
+  /** A player's dino as of the newest snapshot (not interpolated; don't modify it). */
+  latestDinoOf(playerId: number): Dino | undefined {
+    const snap = this.latest();
+    if (!snap) return undefined;
+    for (const d of this.decoded.get(snap)!.values()) if (d.playerId === playerId) return d;
+    return undefined;
+  }
+
   /** The (fractional) server tick to render right now. */
   renderTick(nowMs: number): number {
     if (this.offset === null || !this.snaps.length) return 0;
@@ -76,14 +84,22 @@ export class Mirror {
     return Math.min(t, newest);
   }
 
-  /** Remove and return all events that happened at or before `tick`, in order. */
-  takeEvents(tick: number): TimedEvent[] {
+  /**
+   * Remove and return all events that happened at or before `tick`, in order. Shots by
+   * `shift.dinoId` move by (dx, dy): the local rider is drawn ahead of the server (prediction),
+   * so its shots must leave from where it is drawn.
+   */
+  takeEvents(tick: number, shift?: { dinoId: number; dx: number; dy: number }): TimedEvent[] {
     const due: TimedEvent[] = [];
     const later: TimedEvent[] = [];
     for (const e of this.events) (e.tick <= tick ? due : later).push(e);
     this.events = later;
     for (const e of due) {
       if (e.type === 'shot') {
+        if (shift && e.dinoId === shift.dinoId) {
+          e.x += shift.dx;
+          e.y += shift.dy;
+        }
         this.projectiles.set(e.projectileId, { id: e.projectileId, team: e.team, x0: e.x, y0: e.y, vx: e.vx, vy: e.vy, tick0: e.tick, range: e.range });
       } else if (e.type === 'hit' || e.type === 'impact') {
         this.projectiles.delete(e.projectileId);

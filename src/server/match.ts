@@ -34,12 +34,22 @@ const MAX_MSGS_PER_SEC = 150;
 /** Skip snapshots to clients whose socket buffer is backed up (slow connection). */
 const MAX_BUFFERED_BYTES = 512 * 1024;
 const MAX_CATCHUP_TICKS = 10;
+/**
+ * Inputs waiting to be applied, one per tick. Client prediction steps once per input, so the
+ * server must too; the cap bounds the delay a burst can add (6 ticks = 100 ms, oldest dropped).
+ */
+const MAX_QUEUED_INPUTS = 6;
 
 interface Session {
   ws: WebSocket;
   playerId: number | null;
+  /** The command applied on the latest tick (reused while the queue is empty). */
   input: InputCommand | null;
+  queue: { seq: number; input: InputCommand }[];
+  /** Highest seq received (older ones are stale). */
   seq: number;
+  /** Seq of the input applied on the latest tick: snapshots acknowledge this one. */
+  ack: number;
   msgWindowStart: number;
   msgCount: number;
 }
@@ -116,6 +126,7 @@ export class Match {
       const team = state.teams.find((t) => t.slot === slot) ?? state.teams[0];
       s.playerId = addPlayer(state, team.id, p.kind, p.name).id;
       s.input = null;
+      s.queue.length = 0;
       this.sendWelcome(s);
     }
   }
@@ -186,7 +197,15 @@ export class Match {
     const state = this.state;
     if (!state) return;
     const inputs = new Map<number, InputCommand>();
-    for (const s of this.sessions) if (s.playerId !== null && s.input) inputs.set(s.playerId, s.input);
+    for (const s of this.sessions) {
+      if (s.playerId === null) continue;
+      const next = s.queue.shift();
+      if (next) {
+        s.input = next.input;
+        s.ack = next.seq;
+      }
+      if (s.input) inputs.set(s.playerId, s.input);
+    }
     step(state, inputs, DT);
     const tick = state.tick;
     for (const e of state.events) this.pending.push({ ...e, tick });
@@ -243,12 +262,12 @@ export class Match {
     for (const s of this.sessions) {
       if (s.playerId === null || s.ws.readyState !== s.ws.OPEN) continue;
       if (s.ws.bufferedAmount > MAX_BUFFERED_BYTES) continue;
-      s.ws.send(`{"ack":${s.seq},${rest}`);
+      s.ws.send(`{"ack":${s.ack},${rest}`);
     }
   }
 
   connect(ws: WebSocket): void {
-    const session: Session = { ws, playerId: null, input: null, seq: 0, msgWindowStart: Date.now(), msgCount: 0 };
+    const session: Session = { ws, playerId: null, input: null, queue: [], seq: 0, ack: 0, msgWindowStart: Date.now(), msgCount: 0 };
     this.sessions.add(session);
     ws.on('message', (data, isBinary) => {
       if (isBinary) return ws.close(1003, 'binary not supported');
@@ -282,7 +301,8 @@ export class Match {
     if (msg.t === 'input') {
       if (s.playerId === null || msg.seq <= s.seq) return; // stale or out of order
       s.seq = msg.seq;
-      s.input = msg.input;
+      s.queue.push({ seq: msg.seq, input: msg.input });
+      if (s.queue.length > MAX_QUEUED_INPUTS) s.queue.shift();
       return;
     }
     if (msg.t === 'buy') {

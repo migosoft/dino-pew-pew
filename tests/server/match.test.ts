@@ -118,6 +118,31 @@ describe('game server', () => {
     expect(acks.at(-1)).toBe(5);
   });
 
+  it('applies queued inputs one per tick, so none is lost when two arrive between ticks', async () => {
+    const host = await startServer();
+    const a = await client(host);
+    a.send({ t: 'join', team: 'team0', kind: 'triceratops', setup: { teams: 2, map: 'random' } });
+    await a.waitFor<WelcomeMsg>((m) => m.t === 'welcome');
+    const session = () => [...(match as unknown as { sessions: Set<{ seq: number; ack: number; queue: unknown[] }> }).sessions][0];
+    const cmd = (throttle: number) => ({ throttle, turn: 0, aimWorld: { x: 0, y: 0 }, fire: false });
+    a.send(encodeInput(1, cmd(1)));
+    a.send(encodeInput(2, cmd(0)));
+    await until(() => session().seq === 2, 'both inputs to arrive');
+    match!.tick();
+    expect(session().ack).toBe(1);
+    match!.tick();
+    expect(session().ack).toBe(2);
+    // A burst longer than the queue keeps only the newest inputs, so it can't add lasting delay.
+    for (let i = 3; i <= 14; i++) a.send(encodeInput(i, cmd(1)));
+    await until(() => session().seq === 14, 'the burst to arrive');
+    expect(session().queue.length).toBe(6);
+    match!.tick();
+    expect(session().ack).toBe(9);
+    await ticks(10);
+    expect(session().ack).toBe(14);
+    expect(session().queue.length).toBe(0);
+  });
+
   it('rejects joins to unknown teams and species, and removes players who leave', async () => {
     const host = await startServer();
     const a = await client(host);

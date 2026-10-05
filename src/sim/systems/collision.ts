@@ -1,10 +1,16 @@
-import type { Dino, GameState } from '../types';
+import type { Dino, GameState, World } from '../types';
 import { getDino } from '../defs/dinos';
 import { clamp } from '../math';
 import { forEachObstacleNear, isAirborne } from '../world';
 import { buildDinoGrid, dinosNear, maxDinoRadius } from '../spatial';
 
 const near: number[] = [];
+
+/** What blocks a dino's movement: the terrain's obstacles and the standing structures. */
+export interface ObstacleEnv {
+  world: World;
+  structures: readonly { x: number; y: number; radius: number; hp: number }[];
+}
 
 /** True if a circle overlaps a standing structure. */
 export function structureBlocks(state: GameState, x: number, y: number, r: number): boolean {
@@ -17,8 +23,8 @@ export function structureBlocks(state: GameState, x: number, y: number, r: numbe
 }
 
 /** Push a dino out of rocks, tree trunks, standing structures and the map edge. */
-export function resolveObstacles(state: GameState, d: Dino): void {
-  const { world } = state;
+export function resolveObstacles(env: ObstacleEnv, d: Dino): void {
+  const { world } = env;
   const r = getDino(d.kind).radius;
   forEachObstacleNear(world, d.x, d.y, r + 4, (o) => {
     const dx = d.x - o.x;
@@ -35,7 +41,7 @@ export function resolveObstacles(state: GameState, d: Dino): void {
       d.speed *= 1 - 0.25 * headOn;
     }
   });
-  for (const s of state.structures) {
+  for (const s of env.structures) {
     if (s.hp <= 0) continue;
     const dx = d.x - s.x;
     const dy = d.y - s.y;
