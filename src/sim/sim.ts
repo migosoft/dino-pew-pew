@@ -10,6 +10,7 @@ import { fireMounts } from './systems/firing';
 import { updateProjectiles } from './systems/projectiles';
 import { feed, updateFood } from './systems/feeding';
 import { updateMelee } from './systems/melee';
+import { updateStructures } from './systems/structures';
 import { tryStartAbility, updateAbility } from './systems/abilities';
 import { forgetDinoIndex, isAirborne } from './world';
 import { computeWildCommand } from './ai';
@@ -105,6 +106,7 @@ export function step(state: GameState, inputs: Map<number, InputCommand>, dt: nu
 
   resolveDinoContacts(state);
   updateMelee(state, dt);
+  updateStructures(state, dt);
   for (const d of state.dinos) if (d.alive && !isAirborne(d)) resolveObstacles(state, d);
   updateProjectiles(state, dt);
   updateFood(state, dt);
