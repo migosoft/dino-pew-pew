@@ -64,6 +64,16 @@ function crystal(c: PixCanvas, x: number, y: number, cracked: boolean): void {
   }
 }
 
+/** Small crystal on the tower body, below the turret. */
+function miniCrystal(c: PixCanvas, x: number, y: number): void {
+  ellipse(c, x, y, 4, 4, () => 'rgba(127,240,255,0.35)');
+  rect(c, x - 1, y - 2, 3, 5, CRYSTAL[0]);
+  rect(c, x - 1, y - 2, 1, 4, CRYSTAL[2]);
+  rect(c, x, y - 3, 1, 1, CRYSTAL[1]);
+  rect(c, x, y - 1, 1, 3, CRYSTAL[1]);
+  rect(c, x - 1, y + 3, 3, 1, METAL_DARK);
+}
+
 function banner(c: PixCanvas, p: DinoPalette, torn: boolean): void {
   const x = CX + 24;
   const y = CY - 30;
@@ -96,8 +106,6 @@ export function drawCamp(p: DinoPalette, stage: number): HTMLCanvasElement {
   // Door facing the viewer.
   rect(c, CX - 4, CY + 14, 8, 8, '#24180f');
   rect(c, CX - 4, CY + 14, 8, 1, WOOD[2]);
-  if (stage < 4) crystal(c, CX, CY - 12, false);
-  else crystal(c, CX - 1, CY - 10, true);
   if (stage < 4) banner(c, p, stage >= 1);
   // Damage that builds up stage by stage.
   HOLES.forEach((h, i) => {
@@ -109,6 +117,8 @@ export function drawCamp(p: DinoPalette, stage: number): HTMLCanvasElement {
       px(c, x + h.s - 1, y, EMBER);
     }
   });
+  // Drawn after the damage so no hole swallows it; same spot at every stage, cracked from stage 4.
+  crystal(c, CX, CY - 12, stage >= 4);
   if (stage >= 3) for (let k = 0; k < 18; k++) px(c, CX + 20 + (k * 7) % 14, CY + 10 + (k * 5) % 9, STONE[k % 3]);
   palisade(c, stage, true);
   outline(c, OUTLINE);
@@ -159,6 +169,7 @@ export function drawTowerBase(p: DinoPalette, stage: number): HTMLCanvasElement 
   }
   // Timber platform the turret sits on.
   ellipse(c, 16, 18, 10, 5, (nx, ny, x, y) => litShade(nx, ny, x, y, WOOD[0], WOOD[1], WOOD[2]));
+  miniCrystal(c, 16, 33);
   // Pennant.
   line(c, 25, 4, 25, 18, WOOD[1]);
   for (let r = 0; r < 5; r++) rect(c, 26, 5 + r, 5 - r, 1, r < 2 ? p.tunicLight : p.tunic);
