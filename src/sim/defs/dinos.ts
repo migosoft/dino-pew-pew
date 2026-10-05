@@ -71,7 +71,7 @@ const DINOS: Record<string, DinoDef> = {
     turnPenaltyAtSpeed: 0.2,
     hp: 60,
     // Small: deep water slows it down the most.
-    wadeSpeed: 0.4,
+    wadeSpeed: 0.25,
     head: { offset: { x: 7, y: 0 }, maxYaw: 15 * DEG, yawSpeed: 4 },
     tail: { offset: { x: -5, y: 0 } },
     // Right mouse: a leap toward the cursor (over rocks too) that slams down on whoever is below.

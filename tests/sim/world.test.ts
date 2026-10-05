@@ -30,9 +30,9 @@ describe('world generation', () => {
     for (const b of w.bases) expect(isFree(w, b.x, b.y, BASE_CLEAR - 30)).toBe(true);
   });
 
-  it('is 3072 px square and leaves room for the biggest dino between any two obstacles', () => {
+  it('is 4096 px square and leaves room for the biggest dino between any two obstacles', () => {
     const w = generateWorld(99);
-    expect([w.width, w.height]).toEqual([3072, 3072]);
+    expect([w.width, w.height]).toEqual([4096, 4096]);
     const inner = w.obstacles.filter((o) => o.x > 30 && o.y > 30 && o.x < w.width - 30 && o.y < w.height - 30);
     expect(inner.length).toBeGreaterThan(300);
     for (let i = 0; i < inner.length; i++) {

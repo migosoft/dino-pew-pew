@@ -12,8 +12,8 @@ export interface WorldGenOptions {
   water?: boolean;
 }
 
-/** Default map: 192 x 192 tiles of 16 px = 3072 px square. */
-export const DEFAULT_TILES = 192;
+/** Default map: 256 x 256 tiles of 16 px = 4096 px square (still one ground texture). */
+export const DEFAULT_TILES = 256;
 /** Obstacle-free radius around each base camp. */
 export const BASE_CLEAR = 140;
 /** Water never comes closer than this to a base camp center. */

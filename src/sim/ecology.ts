@@ -6,9 +6,9 @@ import { createDino, isDeepWater, isFree } from './world';
 import { BASE_CLEAR } from './worldgen';
 import { makeWildAi } from './ai';
 
-/** Wild population scales with the number of riders (sized for the 3072 px map). */
+/** Wild population scales with the number of riders (sized for the 4096 px map). */
 export function wildTarget(players: number): number {
-  return Math.min(70, 18 + 4 * players);
+  return Math.min(110, 28 + 5 * players);
 }
 /** Fraction of the wild population that are herbivores. */
 export const HERBIVORE_SHARE = 0.7;
