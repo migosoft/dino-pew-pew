@@ -1,6 +1,15 @@
 # Dino Pew Pew: Handoff
 
-**Status (2026-10-05):** everything is on `master` and pushed (`origin/master` = `fbd0b56`, the merge of PR #1, the camp siege). All 191 tests pass, `tsc` is clean and `npm run build` passes. There are no open branches; `origin/camp-siege` is merged and can be deleted. After that merge, the game was renamed from "Dinoriders" to **Dino Pew Pew**, after the repo `migosoft/dino-pew-pew` (see the naming gotcha).
+**Status (2026-10-05, end of day):** everything is on `master` and pushed (`origin/master` = `c57ac58`). All 191 tests pass, `tsc` is clean and `npm run build` passes. **The game is live at https://dino-pew-pew.duckdns.org** (Oracle Cloud VM, Caddy + Let's Encrypt, see [DEPLOY.md](DEPLOY.md)).
+
+Merged today:
+- PR #1: the camp siege.
+- PR #2: the rename to **Dino Pew Pew** (see the naming gotcha).
+- PR #3: the HTTPS deployment.
+- PR #4: client-side prediction (steering latency).
+- PR #5: `dino-pew-pew` as the Docker and VM name.
+
+The merged branches `camp-siege`, `https-deploy`, `client-prediction` and `rename-deploy-identifiers` can be deleted.
 
 This document is for whoever picks the project up next. It covers the current state, the decisions that are still open, how the code fits together, and what to watch out for. How to play is in [README.md](../README.md). The design history is in [docs/superpowers/specs/](superpowers/specs/) and the implementation plans are in [docs/superpowers/plans/](superpowers/plans/). Older per-phase notes are in git history (`git log -- docs/HANDOFF.md`).
 
@@ -9,8 +18,20 @@ This document is for whoever picks the project up next. It covers the current st
    - **Camp balance.** A lone rider almost certainly can't take a camp with the current numbers. Crossing CROSSING takes about 2 minutes at Triceratops speed, and riders die to wild dinos on the way. A 400 HP tower takes about 8.5 s of a Triceratops's 47 DPS, while the tower deals 10 DPS back. A destroyed tower rebuilds in 90 s. In the browser, a full round (3 towers, then the building, the win banner and the restart) was only played to the end with HP lowered in a scratch copy of the server. Knobs: `CAMP` and `TOWER_GUN` in `src/sim/camp.ts`.
    - **Brontosaurus strength.** With 220 HP and wide side arcs, it may be the strongest mount since its broadside damage went from 6 to 8. Watch it in play.
    - **Wild raptors** are strong: riders crossing the map without shooting back died 2–3 times in tests (`HUNT_RANGE`, raptor `melee`, `wildTarget`).
-2. **Likely next task:** `docs/TASK-https-deploy.md` (untracked, written by the user) describes serving the game over HTTPS with Caddy and Let's Encrypt on an Oracle Cloud VM (`dino-pew-pew.duckdns.org`). The client already switches to `wss://` on HTTPS pages.
-3. **The Docker image on :8080 is stale.** It serves protocol 3, so a current client can't join it. Rebuild with `docker compose up --build -d` when the user wants it (see the port-mapping gotcha).
+2. **Likely next task: play-test over the real network.**
+   - Open https://dino-pew-pew.duckdns.org/?debug.
+   - The bottom-left line shows `RTT`, `JIT`, `FPS`, `ERR` (the prediction correction in px) and `PRED`/`SERVER`.
+   - Prediction was measured only locally with `?lag=150`: 10 ms from key press to turn, against 366 ms before.
+   - If steering still feels off:
+     - a high `ERR` while driving freely means client and server movement have drifted apart (`stepDino` vs `step()`);
+     - a high `RTT` is network;
+     - low `FPS` points to the client-frame items in the performance backlog.
+3. **VM access (open decision).** The user's PC has a dedicated SSH key, `~/.ssh/dino_pew_pew_vm`, for `ubuntu@130.61.38.42`. Its `authorized_keys` comment is `claude-code dino-pew-pew deploy`.
+   - The user hasn't decided yet whether to revoke it or restrict it to deploys. Ask before relying on it.
+   - Deploy: `ssh -i ~/.ssh/dino_pew_pew_vm -o IdentitiesOnly=yes ubuntu@130.61.38.42 'cd ~/dino-pew-pew && git pull && docker compose -f docker-compose.prod.yml up -d --build'`.
+   - Every deploy restarts the world. The VM build runs the tests and takes a few minutes.
+   - Revoke: `sed -i '/claude-code dino-pew-pew deploy/d' ~/.ssh/authorized_keys` on the VM.
+4. **The local Docker container on :8080 is stale** (an old protocol, under the old project name `dinoriders`). To update it, run `docker compose -p dinoriders down` once, then `docker compose up --build -d`. See the port-mapping gotcha.
 
 ## What the game is
 A top-down pixel-art multiplayer shooter. Players ride armed dinosaurs on an 8192 px map and play in **rounds**: each team defends its camp and tries to destroy the others'. The last camp standing wins.
@@ -150,7 +171,10 @@ docker compose up --build -d   # production, http://localhost:8080
 
 - **Capacity:** server CPU is not the limit (a tick is about 1–2 ms of its 16.7 ms budget). Upload bandwidth is, because every player gets every dino. Before the siege, 16 players needed about 6 Mbit/s of upload; now that the wild population can reach 275, snapshots are about twice as large. A home connection carries roughly 16 players; a hosted server many more. Raising `MAX_PLAYERS` past 23 is safe on the server side, but test with real players first. For 50 or more, add area-of-interest culling.
 - **Steering latency** (headless Edge, `?lag=150`, CROSSING): from key down to a visible turn, 10 ms with prediction and 366 ms without (`predictor.apply` disabled). The correction readout stayed at 0 px while driving freely.
-- **Not tested:** more than 2 real browsers on separate machines, over a real network.
+- **Live deployment (VM, 2 OCPU ARM):**
+  - the build, including the 191 tests, passes;
+  - the `wss://` handshake from this machine takes about 110 ms.
+- **Not tested:** more than 2 real browsers on separate machines, and play over a real network (the deployment is live, but nobody has played on it yet).
 
 ## Known limitations
 1. **Prediction covers driving and aiming only.** Shots, hits, ability starts and pushes from other dinos still show one round trip (plus the 100 ms interpolation) late. Your own shots are drawn leaving your predicted position.
