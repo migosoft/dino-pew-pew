@@ -94,8 +94,11 @@ describe('game server', () => {
     await ticks(60);
     const d = match!.state!.dinos.find((x) => x.playerId === w.playerId)!;
     expect(Math.hypot(d.x - start.x, d.y - start.y)).toBeGreaterThan(20);
-    const last = await a.waitFor<SnapshotMsg>((m) => m.t === 'snap' && m.ack === 5);
-    expect(last.ack).toBe(5);
+    // The stale seq 3 must never have overwritten the ack: once 5 is acknowledged, every later snapshot says 5.
+    const acks = a.msgs.filter((m): m is SnapshotMsg => m.t === 'snap').map((m) => m.ack);
+    expect(acks).not.toContain(3);
+    expect(acks.slice(acks.indexOf(5)).every((x) => x === 5)).toBe(true);
+    expect(acks.at(-1)).toBe(5);
   });
 
   it('rejects joins to unknown teams and species, and removes players who leave', async () => {
@@ -162,6 +165,19 @@ describe('game server', () => {
     const wb = await b.waitFor<WelcomeMsg>((m) => m.t === 'welcome');
     expect(wb.teams).toBe(3);
     expect(match!.settings).toEqual({ teams: 3, map: 'random' });
+  });
+
+  it('refuses a join to a slot the running round does not have', async () => {
+    const host = await startServer();
+    const a = await client(host);
+    a.send({ t: 'join', team: 'team0', kind: 'triceratops', setup: { teams: 2, map: 'random' } });
+    await a.waitFor((m) => m.t === 'welcome');
+    const b = await client(host);
+    b.send({ t: 'join', team: 'team2', kind: 'triceratops', setup: { teams: 3, map: 'random' } });
+    const err = await b.waitFor((m) => m.t === 'error');
+    expect((err as { message: string }).message).toBe('TEAM NO LONGER EXISTS');
+    expect(match!.settings).toEqual({ teams: 2, map: 'random' });
+    expect(match!.state!.players).toHaveLength(1);
   });
 
   it('refuses a join without a setup while the server has none', async () => {
