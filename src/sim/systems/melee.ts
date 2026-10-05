@@ -4,6 +4,7 @@ import { getDino } from '../defs/dinos';
 import { angleDiff, angleTo } from '../math';
 import { applyDamage } from './damage';
 import { isAirborne } from '../world';
+import { damageStructure, structuresInArc } from './structures';
 import { buildDinoGrid, dinosNear, maxDinoRadius } from '../spatial';
 
 const near: number[] = [];
@@ -39,7 +40,15 @@ export function updateMelee(state: GameState, dt: number): void {
       best = b;
       bestD = dd;
     }
-    if (!best) continue;
+    if (!best) {
+      // Riders also hack at enemy camp buildings and towers right in front of them.
+      const s = structuresInArc(state, a, def.melee.reach, a.heading, def.melee.arc)[0];
+      if (!s) continue;
+      a.meleeCooldown = def.melee.interval;
+      const ang = angleTo(a, s);
+      damageStructure(state, s, def.melee.damage * a.damageMul, a.id, s.x - Math.cos(ang) * s.radius, s.y - Math.sin(ang) * s.radius);
+      continue;
+    }
     a.meleeCooldown = def.melee.interval;
     const x = (a.x + best.x) / 2;
     const y = (a.y + best.y) / 2;

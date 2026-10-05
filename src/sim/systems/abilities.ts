@@ -6,6 +6,7 @@ import { resolveObstacles } from './collision';
 import { terrainSpeedFactor } from './movement';
 import { applyDamage } from './damage';
 import { isHostile } from './melee';
+import { damageStructure, structuresInArc } from './structures';
 
 // Species abilities on right mouse: the raptor leaps toward the aim point and slams down,
 // the triceratops dashes straight ahead and rams whoever is in the way, the brontosaurus
@@ -114,6 +115,7 @@ function land(state: GameState, d: Dino, ab: AbilityDef): void {
     if ((b.x - d.x) ** 2 + (b.y - d.y) ** 2 > reach * reach) continue;
     applyDamage(state, b, ab.damage * d.damageMul, d.id);
   }
+  for (const s of structuresInArc(state, d, ab.hitReach, 0, Math.PI)) damageStructure(state, s, ab.damage * d.damageMul, d.id, s.x, s.y);
 }
 
 /** Dash contact: damage (once per dash) and shove every hostile in front. */
@@ -129,6 +131,11 @@ function ram(state: GameState, d: Dino, r: number, ab: AbilityDef): void {
     b.x += Math.cos(d.heading) * DASH_KNOCKBACK;
     b.y += Math.sin(d.heading) * DASH_KNOCKBACK;
     resolveObstacles(state, b);
+  }
+  for (const s of structuresInArc(state, d, ab.hitReach, d.heading, DASH_ARC)) {
+    if (d.abilityHit.includes(s.id)) continue;
+    d.abilityHit.push(s.id);
+    damageStructure(state, s, ab.damage * d.damageMul, d.id, (d.x + s.x) / 2, (d.y + s.y) / 2);
   }
 }
 
@@ -151,6 +158,11 @@ function whip(state: GameState, d: Dino, r: number, ab: AbilityDef): void {
     b.y += Math.sin(dir) * shove;
     resolveObstacles(state, b);
   }
+  for (const s of structuresInArc(state, d, ab.hitReach, back, ab.arc ?? Math.PI / 2)) {
+    if (d.abilityHit.includes(s.id)) continue;
+    d.abilityHit.push(s.id);
+    damageStructure(state, s, ab.damage * d.damageMul, d.id, s.x, s.y);
+  }
 }
 
 /** Bite: the jaws close on the one nearest hostile in front of the head. */
@@ -171,7 +183,11 @@ function bite(state: GameState, d: Dino, ab: AbilityDef): void {
   const x = best ? (d.x + Math.cos(d.heading) * jaw + best.x) / 2 : d.x + Math.cos(d.heading) * reach;
   const y = best ? (d.y + Math.sin(d.heading) * jaw + best.y) / 2 : d.y + Math.sin(d.heading) * reach;
   state.events.push({ type: 'bite', dinoId: d.id, targetId: best?.id ?? null, x, y });
-  if (!best) return;
+  if (!best) {
+    const s = structuresInArc(state, d, jaw - def.radius + ab.hitReach, d.heading, ab.arc ?? Math.PI / 4)[0];
+    if (s) damageStructure(state, s, ab.damage * d.damageMul, d.id, x, y);
+    return;
+  }
   applyDamage(state, best, ab.damage * d.damageMul, d.id);
   const shove = ab.knockback ?? 0;
   best.x += Math.cos(d.heading) * shove;

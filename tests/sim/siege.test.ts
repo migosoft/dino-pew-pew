@@ -6,6 +6,9 @@ import { CAMP, campOf, fieldUp, towersOf } from '../../src/sim/camp';
 import { damageStructure } from '../../src/sim/systems/structures';
 import { applyDamage } from '../../src/sim/systems/damage';
 import { updateProjectiles } from '../../src/sim/systems/projectiles';
+import { updateMelee } from '../../src/sim/systems/melee';
+import { tryStartAbility, updateAbility } from '../../src/sim/systems/abilities';
+import { getDino } from '../../src/sim/defs/dinos';
 import { SMALL } from '../helpers';
 
 function siege() {
@@ -49,10 +52,13 @@ describe('siege', () => {
   it('friendly bullets pass through their own towers and building', () => {
     const { s, db } = siege();
     const tower = towersOf(s, 'team1')[0];
+    const camp = campOf(s, 'team1')!;
     boltAt(s, db.id, 'team1', tower.x, tower.y);
+    boltAt(s, db.id, 'team1', camp.x, camp.y);
     updateProjectiles(s, 1 / 60);
     expect(tower.hp).toBe(CAMP.towerHp);
-    expect(s.projectiles).toHaveLength(1);
+    expect(camp.hp).toBe(CAMP.buildingHp);
+    expect(s.projectiles).toHaveLength(2);
   });
 
   it('the force field blocks hits on the building while 3 or more towers stand', () => {
@@ -95,5 +101,40 @@ describe('siege', () => {
     boltAt(s, da.id, 'team0', base.x - 150, base.y - 100);
     updateProjectiles(s, 1 / 60);
     expect(s.projectiles.length).toBe(1);
+  });
+});
+
+describe('melee and abilities vs structures', () => {
+  function faceTower(s: GameState, d: GameState['dinos'][number]) {
+    const tower = towersOf(s, 'team1')[0];
+    const r = getDino(d.kind).radius;
+    d.x = tower.x - tower.radius - r - 2;
+    d.y = tower.y;
+    d.heading = 0;
+    return tower;
+  }
+
+  it('a rider gores a tower in front of it', () => {
+    const { s, da } = siege();
+    const tower = faceTower(s, da);
+    updateMelee(s, 1 / 60);
+    expect(tower.hp).toBe(CAMP.towerHp - getDino('triceratops').melee.damage);
+  });
+
+  it('a triceratops dash rams a tower once', () => {
+    const { s, da } = siege();
+    const tower = faceTower(s, da);
+    da.x -= 20;
+    tryStartAbility(s, da, { throttle: 1, turn: 0, aimWorld: { x: tower.x, y: tower.y }, fire: false, ability: true });
+    for (let i = 0; i < 30; i++) updateAbility(s, da, 1 / 60);
+    expect(tower.hp).toBe(CAMP.towerHp - getDino('triceratops').ability!.damage);
+  });
+
+  it('wild dinos never damage structures', () => {
+    const { s, da } = siege();
+    da.playerId = null;
+    const tower = faceTower(s, da);
+    updateMelee(s, 1 / 60);
+    expect(tower.hp).toBe(CAMP.towerHp);
   });
 });
