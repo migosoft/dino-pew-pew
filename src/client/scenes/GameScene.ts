@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import type { Dino, World } from '../../sim/types';
+import type { Dino, GameEvent, World } from '../../sim/types';
 import { clamp } from '../../sim/math';
 import { generateWorld } from '../../sim/worldgen';
 import { worldOptionsFor } from '../../sim/maps';
@@ -18,7 +18,8 @@ import { ArcIndicator } from '../render/ArcIndicator';
 import { Hud, pixelText } from '../render/Hud';
 import { DEPTH } from '../render/depth';
 import { FONT_KEY } from '../render/textures';
-import { paletteKey } from '../teams';
+import { paletteKey, teamColor } from '../teams';
+import { eventLine } from '../render/hudModel';
 import { ShopPanel } from '../render/ShopPanel';
 import { StructureViews } from '../render/StructureViews';
 import { EliminatedPanel } from '../render/EliminatedPanel';
@@ -213,7 +214,7 @@ export class GameScene extends Phaser.Scene {
     if (!this.inBase && this.shop.isOpen) this.shop.close();
     this.shop.update(meInfo);
     for (const n of this.net.notices.splice(0)) this.hud.showNotice(n);
-    this.hud.update({ me: meInfo, myDino, dinos, players, teams });
+    this.hud.update({ me: meInfo, myDino, dinos, players, teams, structures, round: mirror.round(), spectating: this.eliminated.spectating });
   }
 
   private syncDinoViews(dinos: Dino[], teams: TeamInfo[]): void {
@@ -246,14 +247,20 @@ export class GameScene extends Phaser.Scene {
       case 'towerDown': {
         const tower = structures.find((s) => s.id === e.structureId);
         if (tower) this.fx.death(tower.x, tower.y);
+        this.feedLine(e, players, teams);
         break;
       }
       case 'campDown': {
         const camp = structures.find((s) => s.kind === 'camp' && s.team === e.team);
         const cam = this.cameras.main;
         if (camp && cam.worldView.contains(camp.x, camp.y)) cam.shake(400, 0.01);
+        this.feedLine(e, players, teams);
         break;
       }
+      case 'towerUp':
+      case 'eliminated':
+        this.feedLine(e, players, teams);
+        break;
       case 'hit':
         this.fx.hit(e.x, e.y);
         if (this.dinoViews.get(e.targetId)?.lastView.playerId === this.net.welcome!.playerId) this.cameras.main.shake(80, 0.003);
@@ -307,6 +314,12 @@ export class GameScene extends Phaser.Scene {
         );
         break;
     }
+  }
+
+  private feedLine(e: GameEvent, players: PlayerInfo[], teams: TeamInfo[]): void {
+    const killer = e.type === 'towerDown' || e.type === 'campDown' ? players.find((p) => p.id === e.by)?.name : undefined;
+    const line = eventLine(e, killer, teams);
+    if (line) this.hud.addLine(line.text, teamColor(line.team, teams));
   }
 
   private floatText(x: number, y: number, text: string): void {
