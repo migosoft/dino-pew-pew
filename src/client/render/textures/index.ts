@@ -15,7 +15,6 @@ import {
   ROCK_SIZES,
   drawArrow,
   drawBolt,
-  drawCampStone,
   drawTotem,
   drawCanopy,
   drawDot,
@@ -112,7 +111,6 @@ export function generateTextures(scene: Phaser.Scene): void {
     }
   });
   addImage(scene, 'fieldRing', drawFieldRing());
-  addImage(scene, 'campStone', drawCampStone());
   addStrip(scene, 'weapon_sideCannon', drawSideCannon(), DIRS);
   addStrip(scene, 'weapon_raptorSideGun', drawRaptorSideGun(), DIRS);
   addStrip(scene, 'weapon_broadsideGun', drawBroadsideGun(), DIRS);

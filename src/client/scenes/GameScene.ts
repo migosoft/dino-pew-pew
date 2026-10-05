@@ -3,7 +3,7 @@ import type { Dino, World } from '../../sim/types';
 import { clamp } from '../../sim/math';
 import { generateWorld } from '../../sim/worldgen';
 import { worldOptionsFor } from '../../sim/maps';
-import type { PlayerInfo, TeamInfo, TimedEvent, WelcomeMsg } from '../../net/protocol';
+import type { PlayerInfo, StructureInfo, TeamInfo, TimedEvent, WelcomeMsg } from '../../net/protocol';
 import { NetClient, gameSocketUrl, type JoinRequest } from '../net/NetClient';
 import { PlayerInput } from '../input/playerInput';
 import { WorldView } from '../render/WorldView';
@@ -20,6 +20,7 @@ import { DEPTH } from '../render/depth';
 import { FONT_KEY } from '../render/textures';
 import { paletteKey } from '../teams';
 import { ShopPanel } from '../render/ShopPanel';
+import { StructureViews } from '../render/StructureViews';
 import { EliminatedPanel } from '../render/EliminatedPanel';
 import { BASE_RADIUS } from '../../sim/players';
 import { UPGRADE_STATS } from '../../sim/upgrades';
@@ -39,6 +40,7 @@ export class GameScene extends Phaser.Scene {
   private dinoViews = new Map<number, DinoView>();
   private projectileView!: ProjectileView;
   private foodView!: FoodView;
+  private structures!: StructureViews;
   private lastFeedFx = 0;
   private lastDashFx = 0;
   private shop!: ShopPanel;
@@ -90,6 +92,7 @@ export class GameScene extends Phaser.Scene {
     if (this.net.welcome) this.startWorld(this.net.welcome);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       if (!this.restarting) this.net.close();
+      this.structures?.destroy();
       this.worldView?.destroy();
       this.waterView?.destroy();
     });
@@ -107,6 +110,7 @@ export class GameScene extends Phaser.Scene {
     this.foodView = new FoodView(this, this.world.food, this.world.width, this.world.height);
     this.projectileView = new ProjectileView(this);
     this.fx = new Effects(this);
+    this.structures = new StructureViews(this, this.fx);
     this.arc = new ArcIndicator(this);
     this.hud = new Hud(this);
     this.playerInput = new PlayerInput(this);
@@ -144,7 +148,8 @@ export class GameScene extends Phaser.Scene {
     const rt = mirror.renderTick(performance.now());
     const players = mirror.players();
     const teams = mirror.teams();
-    for (const e of mirror.takeEvents(rt)) this.handleEvent(e, players, teams);
+    const structures = mirror.structuresAt(rt);
+    for (const e of mirror.takeEvents(rt)) this.handleEvent(e, players, teams, structures);
 
     this.foodView.setPlants(this.net.takePlantUpdates());
     const carcasses = this.net.takeCarcassUpdates();
@@ -174,6 +179,7 @@ export class GameScene extends Phaser.Scene {
     const myDino = dinos.find((d) => d.playerId === me);
     this.projectileView.update(mirror.projectilesAt(rt), meInfo?.team);
     this.worldView.updateBases(teams);
+    this.structures.update(structures, teams, time, this.cameras.main.worldView);
     this.arc.update(myDino, this.playerInput.aimWorld());
     const myBase = teams.find((t) => t.id === meInfo?.team)?.base;
     this.eliminated.update(meInfo, teams, mirror.round());
@@ -228,11 +234,26 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private handleEvent(e: TimedEvent, players: PlayerInfo[], teams: TeamInfo[]): void {
+  private handleEvent(e: TimedEvent, players: PlayerInfo[], teams: TeamInfo[], structures: StructureInfo[]): void {
     switch (e.type) {
       case 'shot':
         this.fx.muzzle(e.x, e.y);
         break;
+      case 'structureHit':
+        if (e.shielded) this.structures.shieldHit(e.x, e.y, e.structureId);
+        else this.fx.hit(e.x, e.y);
+        break;
+      case 'towerDown': {
+        const tower = structures.find((s) => s.id === e.structureId);
+        if (tower) this.fx.death(tower.x, tower.y);
+        break;
+      }
+      case 'campDown': {
+        const camp = structures.find((s) => s.kind === 'camp' && s.team === e.team);
+        const cam = this.cameras.main;
+        if (camp && cam.worldView.contains(camp.x, camp.y)) cam.shake(400, 0.01);
+        break;
+      }
       case 'hit':
         this.fx.hit(e.x, e.y);
         if (this.dinoViews.get(e.targetId)?.lastView.playerId === this.net.welcome!.playerId) this.cameras.main.shake(80, 0.003);

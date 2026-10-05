@@ -26,49 +26,42 @@ interface ObstacleBucket {
 export class WorldView {
   private ground: GroundChunks;
   private buckets: BucketGrid<ObstacleBucket>;
-  /** Claimed base camps: slot -> team id + decoration objects. */
-  private camps = new Map<number, { team: string; objects: Phaser.GameObjects.GameObject[] }>();
+  /** Camp markings per team slot. */
+  private camps = new Map<number, { circle: Phaser.GameObjects.Graphics; totems: Phaser.GameObjects.Image[]; eliminated: boolean }>();
 
   constructor(private scene: Phaser.Scene, world: World) {
     this.ground = new GroundChunks(scene, world);
     this.buckets = new BucketGrid(world.width, world.height);
     for (const o of world.obstacles) this.addObstacle(o);
-    // Every campsite has a ring of marker stones; claimed ones get team totems (updateBases).
-    for (const b of world.bases) {
-      for (let k = 0; k < 12; k++) {
-        const a = (k / 12) * Math.PI * 2 + 0.13;
-        const x = Math.round(b.x + Math.cos(a) * BASE_RADIUS);
-        const y = Math.round(b.y + Math.sin(a) * BASE_RADIUS);
-        scene.add.image(x, y, 'campStone').setDepth(DEPTH.world + y);
-      }
-    }
   }
 
-  /** Show totems and a team-colored boundary for each claimed base camp. */
+  /** Draw a team-colored boundary and totems once per team; fade them when the team is eliminated. */
   updateBases(teams: TeamInfo[]): void {
-    for (const [slot, camp] of this.camps) {
-      if (teams.some((t) => t.slot === slot && t.id === camp.team)) continue;
-      for (const o of camp.objects) o.destroy();
-      this.camps.delete(slot);
-    }
     for (const t of teams) {
-      if (this.camps.has(t.slot)) continue;
-      const objects: Phaser.GameObjects.GameObject[] = [];
-      const g = this.scene.add.graphics().setDepth(DEPTH.decal);
-      g.fillStyle(TEAM_COLORS[t.slot], 0.08).fillCircle(t.base.x, t.base.y, BASE_RADIUS);
-      for (let k = 0; k < 96; k++) {
-        if (k % 3 === 2) continue;
-        const a = (k / 96) * Math.PI * 2;
-        g.fillStyle(TEAM_COLORS[t.slot], 0.55).fillRect(Math.round(t.base.x + Math.cos(a) * BASE_RADIUS), Math.round(t.base.y + Math.sin(a) * BASE_RADIUS), 1, 1);
+      let camp = this.camps.get(t.slot);
+      if (!camp) {
+        const g = this.scene.add.graphics().setDepth(DEPTH.decal);
+        g.fillStyle(TEAM_COLORS[t.slot], 0.08).fillCircle(t.base.x, t.base.y, BASE_RADIUS);
+        for (let k = 0; k < 96; k++) {
+          if (k % 3 === 2) continue;
+          const a = (k / 96) * Math.PI * 2;
+          g.fillStyle(TEAM_COLORS[t.slot], 0.55).fillRect(Math.round(t.base.x + Math.cos(a) * BASE_RADIUS), Math.round(t.base.y + Math.sin(a) * BASE_RADIUS), 1, 1);
+        }
+        const totems: Phaser.GameObjects.Image[] = [];
+        for (let k = 0; k < 6; k++) {
+          const a = (k / 6) * Math.PI * 2 + 0.5;
+          const x = Math.round(t.base.x + Math.cos(a) * (BASE_RADIUS - 10));
+          const y = Math.round(t.base.y + Math.sin(a) * (BASE_RADIUS - 10));
+          totems.push(this.scene.add.image(x, y, `totem_t${t.slot}`).setOrigin(0.5, 0.85).setDepth(DEPTH.world + y));
+        }
+        camp = { circle: g, totems, eliminated: false };
+        this.camps.set(t.slot, camp);
       }
-      objects.push(g);
-      for (let k = 0; k < 6; k++) {
-        const a = (k / 6) * Math.PI * 2 + 0.5;
-        const x = Math.round(t.base.x + Math.cos(a) * (BASE_RADIUS - 10));
-        const y = Math.round(t.base.y + Math.sin(a) * (BASE_RADIUS - 10));
-        objects.push(this.scene.add.image(x, y, `totem_t${t.slot}`).setOrigin(0.5, 0.85).setDepth(DEPTH.world + y));
+      if (t.eliminated && !camp.eliminated) {
+        camp.eliminated = true;
+        camp.circle.setAlpha(0.3);
+        for (const o of camp.totems) o.setTint(0x777777);
       }
-      this.camps.set(t.slot, { team: t.id, objects });
     }
   }
 

@@ -344,14 +344,6 @@ export function drawTotem(banner: string, bannerLight: string): HTMLCanvasElemen
   return c.canvas;
 }
 
-/** Unclaimed campsite marker stone. */
-export function drawCampStone(): HTMLCanvasElement {
-  const c = makeCanvas(10, 8);
-  ellipse(c, 5, 4, 4, 3, (nx, ny, x, y) => litShade(nx, ny, x, y, '#3a3631', '#5e5850', '#8a8378'));
-  outline(c, OUTLINE);
-  return c.canvas;
-}
-
 /** Hand-drawn claw: b/d = talon light/dark, l/g/G = scaly foot light/base/dark. */
 const CLAW_MAP = [
   'b...............',

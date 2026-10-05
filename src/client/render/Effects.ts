@@ -8,6 +8,8 @@ const MAX_SCORCHES = 64;
 export class Effects {
   private sparks: Phaser.GameObjects.Particles.ParticleEmitter;
   private dust: Phaser.GameObjects.Particles.ParticleEmitter;
+  private smokeFx: Phaser.GameObjects.Particles.ParticleEmitter;
+  private fireFx: Phaser.GameObjects.Particles.ParticleEmitter;
   private scorches: Phaser.GameObjects.Image[] = [];
   private nextScorch = 0;
 
@@ -30,6 +32,45 @@ export class Effects {
         emitting: false,
       })
       .setDepth(DEPTH.fx - 1);
+    this.smokeFx = scene.add
+      .particles(0, 0, 'dust', {
+        tint: 0x5a5550,
+        speedY: { min: -26, max: -14 },
+        speedX: { min: -6, max: 6 },
+        lifespan: { min: 1200, max: 2000 },
+        scale: { start: 1, end: 3 },
+        alpha: { start: 0.5, end: 0 },
+        emitting: false,
+      })
+      .setDepth(DEPTH.fx - 2);
+    this.fireFx = scene.add
+      .particles(0, 0, 'spark', {
+        tint: [0xffe066, 0xff7a2a, 0xe0503c],
+        speedY: { min: -40, max: -20 },
+        speedX: { min: -8, max: 8 },
+        lifespan: { min: 250, max: 500 },
+        alpha: { start: 1, end: 0 },
+        emitting: false,
+      })
+      .setDepth(DEPTH.fx);
+  }
+
+  /** A rising puff of dark smoke (burning camp). */
+  smoke(x: number, y: number): void {
+    this.smokeFx.explode(1, x, y);
+  }
+
+  /** A flame lick (burning camp). */
+  fire(x: number, y: number): void {
+    this.fireFx.explode(2, x, y);
+  }
+
+  /** A structure collapsing: a burst of dust and sparks, and a shake when it happens on screen. */
+  rubble(x: number, y: number): void {
+    this.dust.explode(16, x, y);
+    this.sparks.explode(12, x, y);
+    const cam = this.scene.cameras.main;
+    if (cam.worldView.contains(x, y)) cam.shake(200, 0.006);
   }
 
   /** Little leaves (herbivores) or bits of meat (carnivores) popping up while eating. */
