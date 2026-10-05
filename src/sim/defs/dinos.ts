@@ -192,6 +192,8 @@ const DINOS: Record<string, DinoDef> = {
   // The armored T-Rex: twin guns on its head armor that turn with the head, two cannons in its
   // shoulder frames, and a lunging bite that hurts. Bigger than a Triceratops, smaller than a
   // Brontosaurus; it walks on two legs, so deep water and river currents slow it a little.
+  // Its art is drawn at REX_SCALE (trexArt.ts); the sizes here (radius, head, tail, seat,
+  // mounts) use the same factor.
   trex: {
     kind: 'trex',
     diet: 'carnivore',
@@ -200,7 +202,7 @@ const DINOS: Record<string, DinoDef> = {
     bounty: 35,
     // Snaps with its jaws.
     melee: { damage: 12, reach: 7, arc: 35 * DEG, interval: 0.9 },
-    radius: 15,
+    radius: 18,
     maxSpeed: 66,
     reverseSpeed: 28,
     accel: 95,
@@ -210,17 +212,17 @@ const DINOS: Record<string, DinoDef> = {
     hp: 170,
     wadeSpeed: 0.75,
     currentSlow: 0.8,
-    head: { offset: { x: 14, y: 0 }, maxYaw: 30 * DEG, yawSpeed: 2.4 },
-    tail: { offset: { x: -11, y: 0 } },
+    head: { offset: { x: 17, y: 0 }, maxYaw: 30 * DEG, yawSpeed: 2.4 },
+    tail: { offset: { x: -13, y: 0 } },
     // The rider sits on the harness behind the head.
-    seat: { x: 9, y: 0 },
+    seat: { x: 11, y: 0 },
     // Right mouse: a short lunge, and the jaws close on the nearest dino in front.
     ability: { kind: 'bite', cooldown: 15, duration: 0.35, speed: 140, damage: 55, hitReach: 14, arc: 35 * DEG, knockback: 10 },
     mounts: [
       {
         id: 'headGunL',
         parent: 'head',
-        offset: { x: 4, y: -8 },
+        offset: { x: 5, y: -10 },
         baseAngle: 0,
         arcHalf: 20 * DEG,
         turnSpeed: 4,
@@ -230,7 +232,7 @@ const DINOS: Record<string, DinoDef> = {
       {
         id: 'headGunR',
         parent: 'head',
-        offset: { x: 4, y: 8 },
+        offset: { x: 5, y: 10 },
         baseAngle: 0,
         arcHalf: 20 * DEG,
         turnSpeed: 4,
@@ -240,7 +242,7 @@ const DINOS: Record<string, DinoDef> = {
       {
         id: 'shoulderGunL',
         parent: 'body',
-        offset: { x: 4, y: -13 },
+        offset: { x: 5, y: -16 },
         baseAngle: 0,
         arcHalf: 40 * DEG,
         turnSpeed: 3,
@@ -250,7 +252,7 @@ const DINOS: Record<string, DinoDef> = {
       {
         id: 'shoulderGunR',
         parent: 'body',
-        offset: { x: 4, y: 13 },
+        offset: { x: 5, y: 16 },
         baseAngle: 0,
         arcHalf: 40 * DEG,
         turnSpeed: 3,
