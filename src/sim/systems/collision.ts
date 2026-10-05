@@ -2,6 +2,9 @@ import type { Dino, GameState } from '../types';
 import { getDino } from '../defs/dinos';
 import { clamp } from '../math';
 import { forEachObstacleNear, isAirborne } from '../world';
+import { buildDinoGrid, dinosNear, maxDinoRadius } from '../spatial';
+
+const near: number[] = [];
 
 /** Push a dino out of rocks, tree trunks and the map edge. */
 export function resolveObstacles(state: GameState, d: Dino): void {
@@ -29,11 +32,13 @@ export function resolveObstacles(state: GameState, d: Dino): void {
 /** Separate overlapping dinos (damage from contact is handled by melee). Leaping dinos pass over. */
 export function resolveDinoContacts(state: GameState): void {
   const ds = state.dinos;
+  buildDinoGrid(state);
   for (let i = 0; i < ds.length; i++) {
     const a = ds[i];
     if (!a.alive || isAirborne(a)) continue;
     const ra = getDino(a.kind).radius;
-    for (let j = i + 1; j < ds.length; j++) {
+    for (const j of dinosNear(state, a.x, a.y, ra + maxDinoRadius(), near)) {
+      if (j <= i) continue;
       const b = ds[j];
       if (!b.alive || isAirborne(b)) continue;
       const rb = getDino(b.kind).radius;

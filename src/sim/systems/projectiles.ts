@@ -3,9 +3,13 @@ import { getDino } from '../defs/dinos';
 import { forEachObstacleNear } from '../world';
 import { applyDamage } from './damage';
 import { BASE_RADIUS } from '../players';
+import { buildDinoGrid, dinosNear, maxDinoRadius } from '../spatial';
+
+const near: number[] = [];
 
 export function updateProjectiles(state: GameState, dt: number): void {
   const { world } = state;
+  buildDinoGrid(state);
   for (const p of state.projectiles) {
     if (!p.alive) continue;
     p.px = p.x;
@@ -40,7 +44,8 @@ export function updateProjectiles(state: GameState, dt: number): void {
     }
     if (!p.alive) continue;
 
-    for (const d of state.dinos) {
+    for (const j of dinosNear(state, p.x, p.y, p.radius + maxDinoRadius(), near)) {
+      const d = state.dinos[j];
       if (!d.alive || d.team === p.team) continue;
       const rr = getDino(d.kind).radius + p.radius;
       if ((d.x - p.x) ** 2 + (d.y - p.y) ** 2 < rr * rr) {
@@ -51,5 +56,8 @@ export function updateProjectiles(state: GameState, dt: number): void {
       }
     }
   }
-  state.projectiles = state.projectiles.filter((p) => p.alive);
+  // Compact in place instead of allocating a new array every tick.
+  let n = 0;
+  for (const p of state.projectiles) if (p.alive) state.projectiles[n++] = p;
+  state.projectiles.length = n;
 }

@@ -11,9 +11,10 @@ import { updateProjectiles } from './systems/projectiles';
 import { feed, updateFood } from './systems/feeding';
 import { updateMelee } from './systems/melee';
 import { tryStartAbility, updateAbility } from './systems/abilities';
-import { isAirborne } from './world';
+import { forgetDinoIndex, isAirborne } from './world';
 import { computeWildCommand } from './ai';
 import { populateWild, updateEcology } from './ecology';
+import { buildDinoGrid } from './spatial';
 
 export interface MatchOptions {
   /** Spawn and maintain wild dinosaurs (default false; the game server turns it on). */
@@ -50,6 +51,8 @@ export function step(state: GameState, inputs: Map<number, InputCommand>, dt: nu
   state.events = [];
   state.tick++;
   updatePlayers(state, dt);
+  // For the wild AI's neighbour searches below.
+  buildDinoGrid(state);
 
   for (const d of state.dinos) {
     if (!d.alive) continue;
@@ -97,6 +100,11 @@ export function step(state: GameState, inputs: Map<number, InputCommand>, dt: nu
   for (const d of state.dinos) if (d.alive && !isAirborne(d)) resolveObstacles(state, d);
   updateProjectiles(state, dt);
   updateFood(state, dt);
-  state.dinos = state.dinos.filter((d) => d.alive);
+  let n = 0;
+  for (const d of state.dinos) if (d.alive) state.dinos[n++] = d;
+  if (n < state.dinos.length) {
+    state.dinos.length = n;
+    forgetDinoIndex(state);
+  }
   if (state.wildlife) updateEcology(state, dt, state.wildSpawnTimer);
 }

@@ -7,6 +7,9 @@ import { findDino, isAirborne, isDeepWater, isFree, isRiver } from './world';
 import { BASE_RADIUS, isInOwnBase } from './players';
 import { canEat } from './systems/feeding';
 import { isHostile } from './systems/melee';
+import { dinosNear, maxDinoRadius } from './spatial';
+
+const near: number[] = [];
 
 // Behaviour of riderless wild dinosaurs. Like a player, the AI only produces an
 // InputCommand; movement, eating and melee are the normal systems.
@@ -115,15 +118,15 @@ function nearestFood(state: GameState, d: Dino, def: DinoDef, range: number): Fo
 function findPrey(state: GameState, d: Dino): Dino | undefined {
   let best: Dino | undefined;
   let bestD = HUNT_RANGE * HUNT_RANGE;
-  for (const o of state.dinos) {
-    if (o === d || !o.alive || !isHostile(d, o) || isInOwnBase(state, o)) continue;
+  for (const j of dinosNear(state, d.x, d.y, HUNT_RANGE, near)) {
+    const o = state.dinos[j];
+    if (o === d || !o.alive) continue;
+    const dd = (o.x - d.x) ** 2 + (o.y - d.y) ** 2;
+    if (dd >= bestD || !isHostile(d, o) || isInOwnBase(state, o)) continue;
     // Wild carnivores only take on wild herbivores no bigger than themselves.
     if (o.team === WILD_TEAM && getDino(o.kind).size === 'large' && getDino(d.kind).size === 'small') continue;
-    const dd = (o.x - d.x) ** 2 + (o.y - d.y) ** 2;
-    if (dd < bestD) {
-      best = o;
-      bestD = dd;
-    }
+    best = o;
+    bestD = dd;
   }
   return best;
 }
@@ -136,10 +139,12 @@ function wantsWhip(state: GameState, d: Dino, def: DinoDef): boolean {
   const ab = def.ability;
   if (ab?.kind !== 'whip' || d.abilityCooldown > 0 || d.abilityT >= 0) return false;
   const back = d.heading + Math.PI;
-  const behind = state.dinos.some((o) => {
-    if (o === d || !o.alive || isAirborne(o) || !isHostile(d, o) || isInOwnBase(state, o)) return false;
+  const behind = dinosNear(state, d.x, d.y, def.radius + maxDinoRadius() + ab.hitReach, near).some((j) => {
+    const o = state.dinos[j];
+    if (o === d || !o.alive) return false;
     const reach = def.radius + getDino(o.kind).radius + ab.hitReach - 4;
     if ((o.x - d.x) ** 2 + (o.y - d.y) ** 2 > reach * reach) return false;
+    if (isAirborne(o) || !isHostile(d, o) || isInOwnBase(state, o)) return false;
     return Math.abs(angleDiff(angleTo(d, o), back)) < (ab.arc ?? Math.PI / 2) * 0.8;
   });
   return behind && rand(state.rng) < ABILITY_CHANCE * 4;

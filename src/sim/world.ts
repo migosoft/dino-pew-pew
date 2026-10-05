@@ -41,9 +41,36 @@ export function createDino(state: GameState, kind: string, team: Team, x: number
   return d;
 }
 
+/** id -> index into state.dinos, rebuilt when the array is replaced, grows or is compacted. */
+interface DinoIndex {
+  dinos: Dino[];
+  count: number;
+  at: Map<number, number>;
+}
+const dinoIndexes = new WeakMap<GameState, DinoIndex>();
+
+function indexDinos(state: GameState): DinoIndex {
+  const at = new Map<number, number>();
+  state.dinos.forEach((d, i) => at.set(d.id, i));
+  const ix = { dinos: state.dinos, count: state.dinos.length, at };
+  dinoIndexes.set(state, ix);
+  return ix;
+}
+
+/** Call after removing dinos from state.dinos in place (its length alone may not change). */
+export function forgetDinoIndex(state: GameState): void {
+  dinoIndexes.delete(state);
+}
+
 export function findDino(state: GameState, id: number): Dino | undefined {
-  for (const d of state.dinos) if (d.id === id) return d;
-  return undefined;
+  let ix = dinoIndexes.get(state);
+  if (!ix || ix.dinos !== state.dinos || ix.count !== state.dinos.length) ix = indexDinos(state);
+  const i = ix.at.get(id);
+  if (i === undefined) return undefined;
+  if (state.dinos[i]?.id === id) return state.dinos[i];
+  // Stale index (the array changed without growing): rebuild once.
+  const j = indexDinos(state).at.get(id);
+  return j === undefined ? undefined : state.dinos[j];
 }
 
 export function findPlayer(state: GameState, id: number): PlayerState | undefined {
@@ -70,21 +97,54 @@ export function indexObstacles(world: World): void {
   });
 }
 
+/** Per world: the query number that last visited each obstacle (dedupes obstacles spanning several cells). */
+const visits = new WeakMap<World, { marks: Uint32Array; query: number }>();
+let visiting = false;
+
 /** Visit each obstacle whose cell overlaps the circle (x, y, r). Return true from cb to stop. */
 export function forEachObstacleNear(world: World, x: number, y: number, r: number, cb: (o: Obstacle) => boolean | void): void {
   const x0 = Math.max(0, Math.floor((x - r) / world.gridCell));
   const x1 = Math.min(world.gridCols - 1, Math.floor((x + r) / world.gridCell));
   const y0 = Math.max(0, Math.floor((y - r) / world.gridCell));
   const y1 = Math.min(world.gridRows - 1, Math.floor((y + r) / world.gridCell));
-  const seen = new Set<number>();
-  for (let gy = y0; gy <= y1; gy++) {
-    for (let gx = x0; gx <= x1; gx++) {
-      for (const idx of world.grid[gy * world.gridCols + gx]) {
-        if (seen.has(idx)) continue;
-        seen.add(idx);
-        if (cb(world.obstacles[idx])) return;
+  // Within one cell nothing repeats. Nested calls (from inside cb) fall back to a Set.
+  if (x0 === x1 && y0 === y1) {
+    for (const idx of world.grid[y0 * world.gridCols + x0]) if (cb(world.obstacles[idx])) return;
+    return;
+  }
+  if (visiting) {
+    const seen = new Set<number>();
+    for (let gy = y0; gy <= y1; gy++) {
+      for (let gx = x0; gx <= x1; gx++) {
+        for (const idx of world.grid[gy * world.gridCols + gx]) {
+          if (seen.has(idx)) continue;
+          seen.add(idx);
+          if (cb(world.obstacles[idx])) return;
+        }
       }
     }
+    return;
+  }
+  let v = visits.get(world);
+  if (!v || v.marks.length < world.obstacles.length || v.query === 0xffffffff) {
+    v = { marks: new Uint32Array(world.obstacles.length), query: 0 };
+    visits.set(world, v);
+  }
+  const q = ++v.query;
+  const marks = v.marks;
+  visiting = true;
+  try {
+    for (let gy = y0; gy <= y1; gy++) {
+      for (let gx = x0; gx <= x1; gx++) {
+        for (const idx of world.grid[gy * world.gridCols + gx]) {
+          if (marks[idx] === q) continue;
+          marks[idx] = q;
+          if (cb(world.obstacles[idx])) return;
+        }
+      }
+    }
+  } finally {
+    visiting = false;
   }
 }
 
