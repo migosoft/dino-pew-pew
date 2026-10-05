@@ -25,10 +25,10 @@ const FX_MARGIN = 80;
 const CAMP_FX_MS = 220;
 const RUIN_SMOKE_MS = 600;
 const TOWER_SPARK_MS = 700;
-/** Roof points (relative to the camp centre) where smoke and fire rise. */
+/** Wing roofs (relative to the camp centre) where smoke and fire rise. */
 const ROOF_POINTS: [number, number][] = [
-  [-14, -22],
-  [12, -26],
+  [-27, -16],
+  [27, -16],
 ];
 const SCAFFOLD = 0xb08a52;
 const PIP = 0xffe066;

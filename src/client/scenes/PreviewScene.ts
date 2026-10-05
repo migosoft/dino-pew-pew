@@ -76,7 +76,7 @@ export class PreviewScene extends Phaser.Scene {
       for (let st = 0; st <= 5; st++) {
         const x = st * CW + CW / 2;
         this.add.image(x, y, `camp_${pal}_${st}`).setOrigin(0.5, 52 / 96);
-        if (st === 0) this.add.image(x, y, `field_${pal}`).setOrigin(0.5, 56 / 110).setAlpha(0.8);
+        if (st === 0) this.add.image(x, y, `field_${pal}`).setAlpha(0.8);
       }
       for (let st = 0; st <= 3; st++) {
         const x = TOWER_X + st * 40;
