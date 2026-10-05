@@ -1,6 +1,7 @@
 # Dinoriders: Handoff
 
-**Status (2026-10-05, end of the phase 9 session):** every requested feature is implemented. All 112 tests pass and the type-check is clean. Everything is committed on `master` and pushed to `origin` (github.com/migosoft/dino-pew-pew).
+**Status (2026-10-05, after the performance pass):** every requested feature is implemented. All 115 tests pass and the type-check is clean. Everything is committed on `master`. The performance commits are **not pushed yet**; phase 9 and earlier are on `origin` (github.com/migosoft/dino-pew-pew).
+- The performance pass is described under [Performance pass](#performance-pass-2026-10-05). The deferred findings are in the [Performance backlog](#performance-backlog).
 - The phase 9 art changes (including the T-Rex carcass, 9g) were checked in headless Chrome screenshots of `/?preview` and of the carcass art. The walk cadence has **not** been watched in a running game yet.
 - The Docker image on :8080 has **not** been rebuilt since Phase 6. Run `docker compose up --build -d` when the user wants it.
 
@@ -48,7 +49,35 @@ A top-down pixel-art multiplayer shooter. Players ride armed dinosaurs in one pe
 | `27c0772` | 9f: leaner Brontosaurus body, neck, head and tail |
 | `bcb4d07` | handoff for Phase 9 |
 | `6115184` | 9g: T-Rex carcass at living size (`REX_CARCASS_SCALE`) |
-| (latest) | handoff update, end of phase 9 |
+| `570c784` | handoff update, end of phase 9 |
+| `72fad3b` | perf: carcasses rot away (`CARCASS_DECAY_SECS`) |
+| `ca85b0b` | perf: protocol 3 (carcass deltas, players/teams only on change), WebSocket compression |
+| `8834437` | perf: shared dino grid (`spatial.ts`), id index for `findDino`, no `Set` per obstacle query |
+| `6ef8412` | perf: client culling, chain shadows redrawn only on change, snapshots decoded once |
+| (latest) | handoff: performance pass and backlog |
+
+## Performance pass (2026-10-05)
+**What changed:**
+1. **Carcasses rot away** in `CARCASS_DECAY_SECS` (120 s, `feeding.ts`), including the old carcasses placed at world creation. This is a small gameplay change: before, a carcass stayed until it was eaten, so over a 20-minute match about 700 piled up. Each snapshot carried every one of them, and the food scans got slower.
+2. **Protocol 3** (`protocol.ts`, `match.ts`):
+   - `welcome` carries all carcasses. Each snapshot then carries only new or changed ones (`carcasses`) and the ids of gone ones (`gone`). `Match.sentCarcasses` holds what was last sent; the client applies the changes in `FoodView.upsertCarcasses`/`removeCarcasses`.
+   - `players` and `teams` are left out of a snapshot while unchanged. `Mirror` keeps the last ones received. `respawn` is sent in whole seconds, so the list changes once a second while someone waits. Any join forces a full resend.
+   - `perMessageDeflate` is on in `http.ts` (threshold 1 KB, level 3).
+3. **Shared dino grid** (`src/sim/spatial.ts`): `buildDinoGrid` (128 px cells) is rebuilt before each pass, and `dinosNear` returns candidate indices **in `state.dinos` order**, so ties and first-hit rules come out the same. Used by melee, dino contacts, projectile hits, `findPrey` and `wantsWhip`.
+   - Queries widen their radius by `SLACK` (48 px) for dinos that moved since the build.
+   - If the array, its length or the tick changed since the build, a query falls back to every dino.
+   - `findDino` uses an id index (`world.ts`). After compacting `state.dinos` in place, call `forgetDinoIndex`.
+   - `forEachObstacleNear` dedupes with visit stamps instead of a new `Set` per call.
+4. **Client** (`DinoView.ts`, `Mirror.ts`, `Effects.ts`, `WorldView.ts`, `Hud.ts`):
+   - Dinos more than `CULL_MARGIN` (200 px) outside the camera are hidden and skip their update.
+   - The stamped chain shadow (a RenderTexture) is redrawn only when a stamp's frame or offset changes (`ChainParts.drawn`).
+   - `Mirror.dinosAt` interpolates into **reused objects**, one per dino id. Read them during the frame; don't keep them, except per id as `DinoView.lastView` does.
+   - Scorch marks are a ring of 64 reused images.
+   - Canopy alpha snaps to its target, and the HUD overlay skips off-screen dinos.
+
+**Measured:**
+- **Sim** (16 bot riders plus wildlife, 6 simulated minutes): a tick went from about 3.7–4.2 ms to about 2.1 ms. The end state was identical before and after the grid change. A typical snapshot is about 8 KB (2.5 KB compressed); before, it was 18 KB and growing.
+- **Client** (headless Edge with software rendering, one rider, seed 7): CPU per frame went from about 36 ms (25 fps) to about 9.5 ms (60 fps). The frame time was measured between Phaser's `prestep` and `postrender` game events. On a real GPU the gain will be different.
 
 ## Latest session: phase 9 (tuning)
 **What was done** (small tuning requests, one commit each):
@@ -250,7 +279,13 @@ tests/       vitest: sim/, net/, server/ (the server tests open real WebSockets 
 ```
 **Server:**
 - `Match` calls `step(state, inputsByPlayerId, DT)` at 60 Hz.
-- Every 3rd tick it broadcasts a snapshot, 20 per second. A snapshot holds dino tuples, players, teams, events stamped with their tick, all carcasses, and the plant food levels that changed since the last snapshot.
+- Every 3rd tick it broadcasts a snapshot, 20 per second. A snapshot holds:
+  - dino tuples (every live dino);
+  - players and teams, left out while unchanged;
+  - events stamped with their tick;
+  - carcasses that appeared or changed, plus `gone` ids;
+  - the plant food levels that changed since the last snapshot.
+- The `welcome` message carries all carcasses and every plant that isn't full.
 
 **Client:**
 - It never runs the sim. It regenerates the terrain from the world seed it gets in `welcome`.
@@ -285,7 +320,7 @@ tests/       vitest: sim/, net/, server/ (the server tests open real WebSockets 
 ```
 npm install
 npm run dev          # server :8080 (tsx watch) + Vite :5173 (proxies /api and /ws); play at :5173
-npm test             # 112 tests, about 3 s (longer under load)
+npm test             # 115 tests, about 3 s (longer under load)
 npm run build        # tsc + vite (dist/) + esbuild server bundle (dist-server/server.cjs)
 docker compose up --build -d   # production, http://localhost:8080
 ```
@@ -303,6 +338,7 @@ docker compose up --build -d   # production, http://localhost:8080
     2. Open `/?debug`, wait about 2.5 s, press `1` (found a team), then the mount key (`1` Triceratops, `2` Velociraptor, `3` Brontosaurus).
     3. Replace `window.dinoriders.scene.playerInput.command` with an autopilot. Phase 7's autopilot looked for the nearest `Tile.Deep` in `scene.world.tiles`, drove there, then circled at throttle 0.6, firing to the left and using the ability.
     4. Read your own dino from `[...scene.dinoViews.values()].map(v => v.lastView)` (speed, position), then call `Page.captureScreenshot`. The fps is in `scene.game.loop.actualFps`.
+    5. Headless fps is capped at 60, so measure CPU per frame instead. Note `performance.now()` on `scene.game.events` `'prestep'` and again on `'postrender'`. Replacing `game.step` doesn't work, because the loop holds a bound copy.
   - Right after Vite starts, the first page load is slow, so `window.dinoriders` may not exist yet. Retry, or wait longer before pressing keys.
   - OS mouse cursors never appear in screenshots. Check `document.querySelector('canvas').style.cursor` instead.
   - Committing such a driver as `scripts/e2e/` would be a good next step.
@@ -335,3 +371,42 @@ docker compose up --build -d   # production, http://localhost:8080
 10. **Collision is one circle per dino.** The Brontosaurus's long neck and tail pass through rocks and other dinos, and its tail whip uses a reach around the body center.
 11. **Docker image is stale.** Rebuild with `docker compose up --build -d` (watch out for the Windows port-mapping gotcha above).
 12. **Untested by unit tests:** client rendering (water, chains, shadows) is only checked by screenshots.
+
+## Performance backlog
+These were found in the performance review of 2026-10-05 but not done. They are roughly in order of payoff within each group, and line numbers are from that date.
+
+**Simulation** (after the grid, the food scans are the biggest cost in a profile):
+- **Food grid** for `nearestFood` (`ai.ts`) and `findFood` (`feeding.ts`). Both scan all ~1000 food entries for each dino that is grazing, foraging or hurt. Plants never move, so the grid only needs carcasses added and removed.
+- `clearHeading` (`ai.ts`): hoist the `[16, 32]` and `[24, 48]` arrays, cache the chosen heading for a few ticks, and use a per-tile "wet" bitmap instead of noise lookups per probe.
+- Look up `tileIndexAt` once per dino per tick: `terrainSpeedFactor` and `applyCurrent` (`movement.ts`) call it 2–3 times. Have `flowAt` return through out-parameters instead of a new object.
+- Ability hit scans (`abilities.ts`: ram, whip, bite, land): use `dinosNear`, test distance first, and make `abilityHit` a Set.
+- Smaller per-tick allocations: `updateAim` builds an `errors` array; volley species `map` their mounts every tick (`sim.ts`); `updatePlayers` runs `players.some` per team.
+- `isInOwnBase` and `findTeam` run a linear team lookup before the distance test in several places.
+
+**Network:**
+- Area-of-interest culling: send each client only the dinos near its camera. Today every client gets every dino.
+- Send `kind` and `team` as small integers (a table in `welcome`), and send `maxHp` only when a dino first appears.
+- Quantize events: shot events carry full-precision floats and a `team` that could be derived from `dinoId`.
+- Clients send input at 60 Hz even when it hasn't changed. Send it on change, plus a ~10 Hz keepalive.
+
+**Client, per frame:**
+- Depth sorting: Phaser re-sorts the whole display list (about 4700 objects) whenever any depth changes. Put static and flat objects (ground, water, shadows, decals, HUD) in their own Layers, and call `setDepth` only when the value changes.
+- `WaterView`:
+  - Precompute each wave point's texture key, speed and rotation, and the length of each river streak, instead of calling `isWet` per streak per frame.
+  - Pool fish images.
+  - Pre-filter dinos and ripples before the fish loop (it is O(fish × dinos)).
+- `wadingOf` runs twice per dino per frame (`GameScene.syncDinoViews` and `WaterView`). Compute it once and pass it along.
+- `ArcIndicator` and the base rings in `WorldView` are Graphics redrawn every frame. Turn the static rings and dotted rims into textures.
+- Pool projectile sprites, muzzle flashes, feed bits and float texts. Skip effects outside the camera.
+- `Mirror.takeEvents` and `projectilesAt` allocate every frame. Return early when nothing is due, and reuse the output objects.
+- Pool `DinoView`s by kind and palette instead of creating and destroying them as wild dinos come and go.
+
+**Client, at join and boot:**
+- `drawGround` (`worldArt.ts`) builds the 4096×4096 ground texture synchronously on every join, and `WorldView.destroy` removes it even for the same seed.
+  - Keep it across rejoins.
+  - Hoist the per-pixel closures.
+  - Build it in a worker or in chunks.
+- The `WaterView` constructor scans the whole map on a 11 px grid. Skip tiles with no water.
+- `generateTextures`: build mask strips from the already rotated strips instead of rotating the masks again, and skip `rider_wild`, which is never used.
+
+**Scaling past one match:** run one match per `worker_thread` or process, and build and compress snapshots off the tick thread. A rewrite in another language (Go was asked about) would not help one match much: a tick is about 2 ms of its 16.7 ms budget. It would also mean keeping a second copy of `src/sim`, which the client also uses for world generation and terrain lookups.
