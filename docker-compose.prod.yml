@@ -1,0 +1,23 @@
+services:
+  dinoriders:
+    build: .
+    image: dinoriders:latest
+    restart: unless-stopped
+    # No published ports: only Caddy is reachable from outside.
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN:?set DOMAIN in .env, e.g. DOMAIN=dino-pew-pew.duckdns.org}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - dinoriders
+    restart: unless-stopped
+volumes:
+  caddy_data:
+  caddy_config:
