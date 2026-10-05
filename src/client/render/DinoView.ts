@@ -8,7 +8,12 @@ import { DIRS } from './textures';
 import { DEPTH } from './depth';
 import { CHAINS, chainLength, type ChainSpec } from './chains';
 
+/**
+ * Distance (px) walked per leg pose for a dino of radius STRIDE_RADIUS (the Velociraptor). Bigger
+ * dinos take longer strides, so their legs swing more slowly and they look heavier.
+ */
 const STRIDE_PER_POSE = 7;
+const STRIDE_RADIUS = 7;
 /** Peak height (px) of a leap above the shadow. */
 const LEAP_HEIGHT = 10;
 /** How far (radians) a tail tip sweeps to each side during a whip, and sways while walking. */
@@ -50,6 +55,11 @@ interface ChainParts {
   /** Trailing direction of each tail link (follow-through), and when it was last advanced. */
   trail: number[] | null;
   lastMs: number;
+}
+
+/** Stride (px per leg pose) for a dino of this radius: Velociraptor 7, Triceratops ≈10, T-Rex ≈14, Brontosaurus ≈16. */
+function strideLen(radius: number): number {
+  return STRIDE_PER_POSE * (radius / STRIDE_RADIUS) ** 0.75;
 }
 
 /**
@@ -137,7 +147,7 @@ export class DinoView {
     const def = getDino(d.kind);
     const { x, y, heading } = d;
 
-    const pose = Math.abs(d.speed) > 2 ? Math.floor(d.stride / STRIDE_PER_POSE) % 2 : 0;
+    const pose = Math.abs(d.speed) > 2 ? Math.floor(d.stride / strideLen(def.radius)) % 2 : 0;
     const f = frameForAngle(heading, DIRS);
     // Mid-leap the dino rises above its shadow and looks a little bigger.
     const ab = def.ability;
@@ -253,7 +263,7 @@ export class DinoView {
       const reach = (i + 1) / m;
       const t = whipT - i * WHIP_LAG;
       const whip = whipT >= 0 && t > 0 && t < 1 ? Math.sin(Math.PI * 2 * t) * WHIP_SWING * reach ** 1.2 : 0;
-      const sway = moving ? Math.sin(d.stride / 9 - i * SWAY_WAVE) * TAIL_SWAY * (0.4 + reach) : 0;
+      const sway = moving ? Math.sin((d.stride / strideLen(def.radius)) * (STRIDE_PER_POSE / 9) - i * SWAY_WAVE) * TAIL_SWAY * (0.4 + reach) : 0;
       return trail[i] + whip + sway;
     });
     const tail = placeChain(localToWorld(d, d.heading, def.tail?.offset ?? { x: -def.radius, y: 0 }), segs.map((s) => s.len), tailAngles);
