@@ -6,7 +6,7 @@ import { generateWorld, MAX_WORLD_CARCASSES, MIN_WORLD_CARCASSES } from '../../s
 import { createDino } from '../../src/sim/world';
 import { addPlayer, createTeam } from '../../src/sim/players';
 import { applyDamage } from '../../src/sim/systems/damage';
-import { FOOD, REGROW_DELAY, canEat, feed, makeCarcass, updateFood } from '../../src/sim/systems/feeding';
+import { CARCASS_DECAY_SECS, FOOD, REGROW_DELAY, canEat, feed, makeCarcass, updateFood } from '../../src/sim/systems/feeding';
 
 const DT = 1 / 60;
 
@@ -124,6 +124,15 @@ describe('eating', () => {
     const c = scene('velociraptor', makeCarcass(5, 'velociraptor', 100, 100, 0));
     c.f.food = 0;
     updateFood(c.s, DT);
+    expect(c.s.food).toHaveLength(0);
+  });
+
+  it('an untouched carcass rots away in CARCASS_DECAY_SECS', () => {
+    const c = scene('velociraptor', makeCarcass(5, 'triceratops', 100, 100, 0));
+    for (let i = 0; i < (CARCASS_DECAY_SECS / 2) * 60; i++) updateFood(c.s, DT);
+    expect(c.s.food).toHaveLength(1);
+    expect(c.f.food).toBeCloseTo(c.f.maxFood / 2, 0);
+    for (let i = 0; i < (CARCASS_DECAY_SECS / 2) * 60 + 2; i++) updateFood(c.s, DT);
     expect(c.s.food).toHaveLength(0);
   });
 
