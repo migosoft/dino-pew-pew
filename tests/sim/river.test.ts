@@ -11,7 +11,7 @@ import { SMALL } from '../helpers';
 
 /** A dry, empty map that is one big river flowing south (+y) at `speed` px/s. */
 function river(speed: number, tile: number = Tile.Shallow): GameState {
-  const s = createMatch(4, { cols: 60, rows: 60, water: false });
+  const s = createMatch(4, { cols: 60, rows: 60, water: false }, { camps: false });
   s.world.obstacles = [];
   s.world.grid = s.world.grid.map(() => []);
   s.food = [];

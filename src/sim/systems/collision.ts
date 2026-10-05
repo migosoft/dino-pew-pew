@@ -6,7 +6,17 @@ import { buildDinoGrid, dinosNear, maxDinoRadius } from '../spatial';
 
 const near: number[] = [];
 
-/** Push a dino out of rocks, tree trunks and the map edge. */
+/** True if a circle overlaps a standing structure. */
+export function structureBlocks(state: GameState, x: number, y: number, r: number): boolean {
+  for (const s of state.structures) {
+    if (s.hp <= 0) continue;
+    const rr = s.radius + r;
+    if ((s.x - x) ** 2 + (s.y - y) ** 2 < rr * rr) return true;
+  }
+  return false;
+}
+
+/** Push a dino out of rocks, tree trunks, standing structures and the map edge. */
 export function resolveObstacles(state: GameState, d: Dino): void {
   const { world } = state;
   const r = getDino(d.kind).radius;
@@ -25,6 +35,19 @@ export function resolveObstacles(state: GameState, d: Dino): void {
       d.speed *= 1 - 0.25 * headOn;
     }
   });
+  for (const s of state.structures) {
+    if (s.hp <= 0) continue;
+    const dx = d.x - s.x;
+    const dy = d.y - s.y;
+    const min = s.radius + r;
+    const dd = dx * dx + dy * dy;
+    if (dd >= min * min) continue;
+    const dist = Math.sqrt(dd) || 0.0001;
+    d.x += (dx / dist) * (min - dist);
+    d.y += (dy / dist) * (min - dist);
+    const headOn = Math.abs((Math.cos(d.heading) * dx + Math.sin(d.heading) * dy) / dist);
+    d.speed *= 1 - 0.25 * headOn;
+  }
   d.x = clamp(d.x, r, world.width - r);
   d.y = clamp(d.y, r, world.height - r);
 }

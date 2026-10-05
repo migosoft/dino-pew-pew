@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createMatch } from '../../src/sim/sim';
 import { CAMP, campOf, fieldUp, standingTowers, towersOf } from '../../src/sim/camp';
-import { BASE_RADIUS } from '../../src/sim/players';
+import { BASE_RADIUS, addPlayer } from '../../src/sim/players';
+import { resolveObstacles, structureBlocks } from '../../src/sim/systems/collision';
+import { getDino } from '../../src/sim/defs/dinos';
 import { worldOptionsFor } from '../../src/sim/maps';
 import { CROSSING } from '../../src/sim/maps/crossing';
 import { SMALL } from '../helpers';
@@ -37,5 +39,33 @@ describe('camps', () => {
   it('can be turned off for legacy unit tests', () => {
     const s = createMatch(1, SMALL, { teams: 2, camps: false });
     expect(s.structures).toEqual([]);
+  });
+});
+
+describe('solid structures', () => {
+  it('pushes dinos out of a standing tower, not out of rubble', () => {
+    const s = createMatch(2, SMALL, { teams: 2 });
+    const p = addPlayer(s, 'team1', 'triceratops', 'A');
+    const d = s.dinos.find((x) => x.playerId === p.id)!;
+    const tower = towersOf(s, 'team0')[0];
+    d.x = tower.x + 3;
+    d.y = tower.y;
+    resolveObstacles(s, d);
+    expect(Math.hypot(d.x - tower.x, d.y - tower.y)).toBeGreaterThanOrEqual(tower.radius + getDino('triceratops').radius - 1e-6);
+    tower.hp = 0;
+    d.x = tower.x + 3;
+    d.y = tower.y;
+    resolveObstacles(s, d);
+    expect(d.x).toBeCloseTo(tower.x + 3);
+  });
+
+  it('spawns riders in their camp but never on the building or a tower', () => {
+    const s = createMatch(3, SMALL, { teams: 2 });
+    for (let i = 0; i < 12; i++) {
+      const p = addPlayer(s, 'team0', 'brontosaurus', `P${i}`);
+      const d = s.dinos.find((x) => x.playerId === p.id)!;
+      expect(structureBlocks(s, d.x, d.y, getDino('brontosaurus').radius)).toBe(false);
+      expect(Math.hypot(d.x - s.teams[0].base.x, d.y - s.teams[0].base.y)).toBeLessThan(BASE_RADIUS);
+    }
   });
 });

@@ -4,6 +4,7 @@ import { getDino } from './defs/dinos';
 import { angleTo } from './math';
 import { rand, randRange } from './rng';
 import { createDino, findDino, findPlayer, findTeam, isFree } from './world';
+import { structureBlocks } from './systems/collision';
 import { applyUpgrades, noUpgrades, payBounty } from './upgrades';
 
 export const MAX_TEAMS = 4;
@@ -65,20 +66,26 @@ export function removePlayer(state: GameState, playerId: number): void {
 export function spawnPlayerDino(state: GameState, player: PlayerState): Dino {
   const team = findTeam(state, player.team)!;
   const def = getDino(player.kind);
-  let x = team.base.x;
+  let x = team.base.x + CAMP.spawnFallback;
   let y = team.base.y;
-  for (let attempt = 0; attempt < 30; attempt++) {
+  let fallback: { x: number; y: number } | null = null;
+  let found = false;
+  for (let attempt = 0; attempt < 40; attempt++) {
     const a = rand(state.rng) * Math.PI * 2;
-    const r = randRange(state.rng, 0, BASE_RADIUS * 0.6);
+    const r = randRange(state.rng, CAMP.spawnMin, CAMP.spawnMax);
     const cx = team.base.x + Math.cos(a) * r;
     const cy = team.base.y + Math.sin(a) * r;
+    if (!isFree(state.world, cx, cy, def.radius) || structureBlocks(state, cx, cy, def.radius + 4)) continue;
+    fallback ??= { x: cx, y: cy };
     const crowded = state.dinos.some((d) => d.alive && (d.x - cx) ** 2 + (d.y - cy) ** 2 < (def.radius * 2.5) ** 2);
-    if (isFree(state.world, cx, cy, def.radius) && !crowded) {
+    if (!crowded) {
       x = cx;
       y = cy;
+      found = true;
       break;
     }
   }
+  if (!found && fallback) ({ x, y } = fallback);
   // Face the map center.
   const heading = angleTo({ x, y }, { x: state.world.width / 2, y: state.world.height / 2 });
   const dino = createDino(state, player.kind, player.team, x, y, heading, player.id);
