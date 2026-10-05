@@ -18,6 +18,18 @@ async function startServer() {
   return `127.0.0.1:${(app.server.address() as AddressInfo).port}`;
 }
 
+/** How long to wait for a condition before failing. Generous: only a failing test ever waits this long. */
+const WAIT_MS = 10000;
+
+/** Poll until `cond` holds. Messages travel over real sockets, so their arrival time varies under load. */
+async function until(cond: () => boolean, what: string, ms = WAIT_MS) {
+  const t0 = Date.now();
+  while (!cond()) {
+    if (Date.now() - t0 > ms) throw new Error(`timeout waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
+
 /** A tiny test client that records every server message. */
 async function client(host: string) {
   const ws = new WebSocket(`ws://${host}/ws`);
@@ -25,22 +37,27 @@ async function client(host: string) {
   const msgs: ServerMsg[] = [];
   ws.on('message', (d) => msgs.push(JSON.parse(d.toString())));
   await new Promise((r, j) => (ws.once('open', r), ws.once('error', j)));
-  const waitFor = async <T extends ServerMsg>(pred: (m: ServerMsg) => boolean, ms = 2000): Promise<T> => {
-    const t0 = Date.now();
-    for (;;) {
-      const found = msgs.find(pred);
-      if (found) return found as T;
-      if (Date.now() - t0 > ms) throw new Error('timeout waiting for message');
-      await new Promise((r) => setTimeout(r, 5));
-    }
+  const waitFor = async <T extends ServerMsg>(pred: (m: ServerMsg) => boolean): Promise<T> => {
+    await until(() => msgs.some(pred), 'message');
+    return msgs.find(pred) as T;
   };
-  return { ws, msgs, waitFor, send: (o: unknown) => ws.send(typeof o === 'string' ? o : JSON.stringify(o)) };
+  const snaps = () => msgs.filter((m): m is SnapshotMsg => m.t === 'snap');
+  return { ws, msgs, snaps, waitFor, send: (o: unknown) => ws.send(typeof o === 'string' ? o : JSON.stringify(o)) };
 }
 
 /** Run the match manually (no real-time loop) so tests are fast and deterministic. */
 async function ticks(n: number) {
   for (let i = 0; i < n; i++) match!.tick();
   await new Promise((r) => setTimeout(r, 20));
+}
+
+/** Keep ticking until `cond` holds: for effects of a client message, which reaches the server at an unknown time. */
+async function tickUntil(cond: () => boolean, what: string) {
+  const t0 = Date.now();
+  while (!cond()) {
+    if (Date.now() - t0 > WAIT_MS) throw new Error(`timeout waiting for ${what}`);
+    await ticks(3);
+  }
 }
 
 afterEach(async () => {
@@ -90,7 +107,7 @@ describe('game server', () => {
     a.send(encodeInput(5, { throttle: 1, turn: 0, aimWorld: { x: 0, y: 0 }, fire: false }));
     a.send(encodeInput(3, { throttle: -1, turn: 0, aimWorld: { x: 0, y: 0 }, fire: false })); // stale
     // Tick until the server has taken the input (delivery time varies under load).
-    for (let i = 0; i < 100 && !a.msgs.some((m) => m.t === 'snap' && m.ack === 5); i++) await ticks(3);
+    await tickUntil(() => a.msgs.some((m) => m.t === 'snap' && m.ack === 5), 'ack 5');
     await ticks(60);
     const d = match!.state!.dinos.find((x) => x.playerId === w.playerId)!;
     expect(Math.hypot(d.x - start.x, d.y - start.y)).toBeGreaterThan(20);
@@ -113,8 +130,7 @@ describe('game server', () => {
     await a.waitFor((m) => m.t === 'welcome');
     expect(match!.state!.players).toHaveLength(1);
     a.ws.close();
-    await new Promise((r) => setTimeout(r, 50));
-    expect(match!.state).toBeNull();
+    await until(() => match!.state === null, 'the server to drop the world');
   });
 
   it('sells upgrades over the socket and explains refusals', async () => {
@@ -127,9 +143,9 @@ describe('game server', () => {
     match!.state!.players[0].money = 1000;
     a.send({ t: 'buy', stat: 'damage' });
     a.send({ t: 'buy', stat: 'teleport' }); // invalid stat: ignored
-    await new Promise((r) => setTimeout(r, 30));
-    await ticks(3);
-    const snap = await a.waitFor<SnapshotMsg>((m) => m.t === 'snap' && !!m.players?.some((p) => p.id === w.playerId && p.upgrades.damage === 1));
+    const bought = (m: ServerMsg) => m.t === 'snap' && !!m.players?.some((p) => p.id === w.playerId && p.upgrades.damage === 1);
+    await tickUntil(() => a.msgs.some(bought), 'the upgrade in a snapshot');
+    const snap = a.msgs.find(bought) as SnapshotMsg;
     expect(snap.players![0].money).toBe(1000 - 60);
   });
 
@@ -141,7 +157,8 @@ describe('game server', () => {
     const worldCarcasses = match!.state!.food.filter((f) => f.kind === 'carcass');
     expect(w.carcasses.map((c) => c[0]).sort()).toEqual(worldCarcasses.map((f) => f.id).sort());
     await ticks(6);
-    const [first, second] = a.msgs.filter((m): m is SnapshotMsg => m.t === 'snap');
+    await until(() => a.snaps().length >= 2, 'two snapshots');
+    const [first, second] = a.snaps();
     expect(first.players).toHaveLength(1);
     expect(first.carcasses).toHaveLength(worldCarcasses.length);
     expect(second.players).toBeUndefined();
@@ -150,7 +167,8 @@ describe('game server', () => {
     // A carcass that is eaten up is reported gone.
     worldCarcasses[0].food = 0;
     await ticks(3);
-    const third = a.msgs.filter((m): m is SnapshotMsg => m.t === 'snap')[2];
+    await until(() => a.snaps().length >= 3, 'a third snapshot');
+    const third = a.snaps()[2];
     expect(third.gone).toEqual([worldCarcasses[0].id]);
   });
 
@@ -222,9 +240,8 @@ describe('game server', () => {
     a.send({ t: 'join', team: 'team0', kind: 'triceratops', setup: { teams: 2, map: 'random' } });
     await a.waitFor((m) => m.t === 'welcome');
     a.ws.close();
-    await new Promise((r) => setTimeout(r, 50));
+    await until(() => match!.state === null, 'the server to reset');
     expect(match!.settings).toBeNull();
-    expect(match!.state).toBeNull();
     expect(match!.lobby().setup).toBeNull();
   });
 
@@ -243,8 +260,8 @@ describe('game server', () => {
     st.round.phase = 'playing';
     eliminateTeam(st, 'team0');
     a.send({ t: 'switch', team: 'team2', kind: 'trex' });
-    await ticks(1);
-    expect(st.players.find((p) => p.id === w.playerId)!.team).toBe('team2');
+    await until(() => st.players.find((p) => p.id === w.playerId)!.team === 'team2', 'the switch');
+    expect(st.players.find((p) => p.id === w.playerId)!.kind).toBe('trex');
   });
 
   it('refuses joins and switches into an eliminated team', async () => {
