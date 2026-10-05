@@ -72,7 +72,7 @@ function clearHeading(state: GameState, d: Dino, desired: number, sideBias: numb
   return desired + Math.PI * sideBias;
 }
 
-/** Steer from base camps: wild animals keep out of the riders' camps. */
+/** Steer from base camps (BASE_RADIUS, the full camp area): wild animals keep out of the riders' camps. */
 function avoidBases(state: GameState, d: Dino, desired: number): number {
   for (const t of state.teams) {
     const dist = Math.hypot(d.x - t.base.x, d.y - t.base.y);

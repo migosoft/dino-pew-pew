@@ -1,5 +1,5 @@
 import type { Dino, GameState, PlayerState, TeamState } from './types';
-import { CAMP, placeCamp } from './camp';
+import { CAMP, campOf, placeCamp } from './camp';
 import { getDino } from './defs/dinos';
 import { angleTo } from './math';
 import { rand, randRange } from './rng';
@@ -106,6 +106,18 @@ export function updatePlayers(state: GameState, dt: number): void {
     t.emptyFor = state.players.some((p) => p.team === t.id) ? 0 : t.emptyFor + dt;
   }
   state.teams = state.teams.filter((t) => t.emptyFor < TEAM_EMPTY_TIMEOUT);
+  healInCamps(state, dt);
+}
+
+/** Your own standing camp patches you up once nobody has hit you for a moment. */
+function healInCamps(state: GameState, dt: number): void {
+  if (!state.camps) return;
+  for (const d of state.dinos) {
+    if (!d.alive || d.playerId === null || d.hp >= d.maxHp || d.sinceHit < CAMP.healDelay) continue;
+    const camp = campOf(state, d.team);
+    if (!camp || camp.hp <= 0 || !isInOwnBase(state, d)) continue;
+    d.hp = Math.min(d.maxHp, d.hp + CAMP.healPerSec * dt);
+  }
 }
 
 /** True when a dino stands inside its own team's base camp (safe zone). */

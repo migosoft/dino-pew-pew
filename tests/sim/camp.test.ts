@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createMatch } from '../../src/sim/sim';
+import { createMatch, step } from '../../src/sim/sim';
 import { CAMP, campOf, fieldUp, standingTowers, towersOf } from '../../src/sim/camp';
 import { BASE_RADIUS, addPlayer } from '../../src/sim/players';
 import { resolveObstacles, structureBlocks } from '../../src/sim/systems/collision';
@@ -67,5 +67,23 @@ describe('solid structures', () => {
       expect(structureBlocks(s, d.x, d.y, getDino('brontosaurus').radius)).toBe(false);
       expect(Math.hypot(d.x - s.teams[0].base.x, d.y - s.teams[0].base.y)).toBeLessThan(BASE_RADIUS);
     }
+  });
+});
+
+describe('healing aura', () => {
+  it('heals riders in their standing camp once they have not been hit for 3 s', () => {
+    const s = createMatch(8, SMALL, { teams: 2 });
+    const p = addPlayer(s, 'team0', 'triceratops', 'A');
+    const d = s.dinos.find((x) => x.playerId === p.id)!;
+    d.hp = 50;
+    d.sinceHit = 0;
+    for (let i = 0; i < 120; i++) step(s, new Map(), 1 / 60);
+    expect(d.hp).toBe(50);
+    for (let i = 0; i < 120; i++) step(s, new Map(), 1 / 60);
+    expect(d.hp).toBeGreaterThan(50 + CAMP.healPerSec * 0.9);
+    campOf(s, 'team0')!.hp = 0;
+    const before = d.hp;
+    for (let i = 0; i < 60; i++) step(s, new Map(), 1 / 60);
+    expect(d.hp).toBe(before);
   });
 });
