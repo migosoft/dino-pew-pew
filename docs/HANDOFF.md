@@ -1,7 +1,7 @@
 # Dinoriders: Handoff
 
 **Status (2026-10-05, end of the phase 9 session):** every requested feature is implemented. All 112 tests pass and the type-check is clean. Everything is committed on `master` and pushed to `origin` (github.com/migosoft/dino-pew-pew).
-- The phase 9 art changes were checked in headless Chrome screenshots of `/?preview` and of the carcass art. The walk cadence has **not** been watched in a running game yet.
+- The phase 9 art changes (including the T-Rex carcass, 9g) were checked in headless Chrome screenshots of `/?preview` and of the carcass art. The walk cadence has **not** been watched in a running game yet.
 - The Docker image on :8080 has **not** been rebuilt since Phase 6. Run `docker compose up --build -d` when the user wants it.
 
 See [Latest session](#latest-session-phase-9-tuning).
@@ -46,7 +46,9 @@ A top-down pixel-art multiplayer shooter. Players ride armed dinosaurs in one pe
 | `c744432` | 9d: T-Rex 1.2× bigger (`REX_SCALE`) |
 | `7e61066` | 9e: Brontosaurus carcass drawn at `BRONTO_SCALE` |
 | `27c0772` | 9f: leaner Brontosaurus body, neck, head and tail |
-| (latest) | handoff for Phase 9 |
+| `bcb4d07` | handoff for Phase 9 |
+| `6115184` | 9g: T-Rex carcass at living size (`REX_CARCASS_SCALE`) |
+| (latest) | handoff update, end of phase 9 |
 
 ## Latest session: phase 9 (tuning)
 **What was done** (small tuning requests, one commit each):
@@ -56,9 +58,9 @@ A top-down pixel-art multiplayer shooter. Players ride armed dinosaurs in one pe
 4. **T-Rex 1.2× bigger:** `REX_SCALE` in `trexArt.ts` works like `BRONTO_SCALE`: canvas sizes `2 · r(28)` and `2 · r(22)` (kept even so the pivot stays on the pixel grid), every coordinate scaled, 1 px details kept at 1 px, gun sprites unscaled. In `dinos.ts`: radius 15 → 18, head (17, 0), tail (−13, 0), seat (11, 0), head guns (5, ±10), shoulder guns (5, ±16). **Keep the two in step** when resizing.
 5. **Brontosaurus carcass at living size:** `drawBrontosaurusCarcass` (`foodArt.ts`) is laid out in design pixels and drawn at `BRONTO_SCALE` through `X`/`Y`/`thick` helpers. It is about 140 px long, against about 146 px for the living animal (it was 92 px).
 6. **Leaner Brontosaurus** (`brontosaurusArt.ts`): torso half-width 12.5 → 10.2 design px (same length), shoulders 5.6 × 5.8, legs at ±9/±9.5 with slightly smaller feet, neck root 4.0 (tip 2.2), tail root 5.0, a narrower head. The platform and gun mounts did not move, so the pods hang a little further past the flanks. The hitbox radius stays 22.
+7. **T-Rex carcass at living size:** `drawTrexCarcass` uses the same `X`/`Y`/`thick` helpers at `REX_CARCASS_SCALE` (`REX_SCALE · 1.45`, because its layout was shorter than the living art). It is about 92 px long, against about 89 px for the living T-Rex (it was 52 px). The Triceratops (about 50 vs 45 px) and Velociraptor (about 29 vs 35 px) carcasses were measured and are close enough, so they were left alone.
 
-**Not done, worth considering:**
-- The **T-Rex carcass** is still about 52 px long, against about 90 px for the bigger living T-Rex. It could get the same treatment as the Brontosaurus carcass (`REX_SCALE` plus wider proportions). The Triceratops and raptor carcasses were not checked against their living sizes.
+**Still open:**
 - **Balance after 9a:** with 220 HP and wide side arcs, the Brontosaurus may now be the strongest mount. Watch it in play.
 
 **How the art was checked:** a throwaway page in the project root (`_artcheck.html`, deleted afterwards) imported the draw functions from `/src/...` through the Vite dev server. It and `/?preview=<kind>&zoom=2&focus=row,col` were captured with `chrome.exe --headless=new --virtual-time-budget=6000 --screenshot=...`. For before/after shots, `git stash` the change, shoot, then `git stash pop`.
