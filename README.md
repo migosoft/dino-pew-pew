@@ -85,5 +85,6 @@ The Brontosaurus is the example for broadside guns: body mounts at `baseAngle` Â
 with `fireMode: 'side'` so that only the guns whose arc holds the cursor fire. `wadeSpeed` sets
 how much speed a species keeps in deep water. New species also need sprites drawn in
 `src/client/render/textures/` under the keys `<kind>_body_<palette>_<pose>`, `<kind>_shadow_<pose>`
-and (if it has a head) `<kind>_head_<palette>` (palette = `t0`..`t3`). A species with a `tail`
-can also have a `<kind>_tail_<palette>` part that swings during a whip.
+and (if it has a head) `<kind>_head_<palette>` (palette = `t0`..`t3`). A long neck and tail can
+bend: list the species in [src/client/render/chains.ts](src/client/render/chains.ts) and draw each
+link of them as its own sprite (see the Brontosaurus).

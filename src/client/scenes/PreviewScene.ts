@@ -15,7 +15,8 @@ const cellFor = (radius: number) => Math.max(52, radius * 8);
 
 /**
  * Art preview sheet, opened with `?preview` (`?preview=velociraptor` for another species,
- * `&zoom=3&focus=row,col` to enlarge one cell). Rows are team palettes plus wild; columns are headings.
+ * `&zoom=3&focus=row,col` to enlarge one cell, `&yaw=0.6` to turn heads (radians), `&whip=0.25` to
+ * freeze a whip at that point of its swing). Rows are team palettes plus wild; columns are headings.
  * Ridden dinos have their guns turned slightly inwards, as when aiming ahead.
  */
 export class PreviewScene extends Phaser.Scene {
@@ -35,7 +36,9 @@ export class PreviewScene extends Phaser.Scene {
         const heading = (col / HEADINGS) * Math.PI * 2;
         const ridden = pal !== 'wild';
         const d = createDino(s, kind, WILD_TEAM, (col + 0.5) * CELL, (row + 0.5) * CELL + 8, heading, ridden ? 1 : null);
-        d.headYaw = 0;
+        d.headYaw = Number(params.get('yaw')) || 0;
+        const whip = params.get('whip');
+        if (whip !== null && getDino(kind).ability) d.abilityT = Number(whip) * getDino(kind).ability!.duration;
         d.mounts.forEach((m, i) => (m.angle = d.mounts.length > 1 ? (i === 0 ? 0.08 : -0.08) : 0));
         new DinoView(this, d, pal);
       }

@@ -1,11 +1,11 @@
 import { checker, ellipse, line, litShade, makeCanvas, outline, px, rect } from './pixel';
 import { METAL, METAL_DARK, METAL_LIGHT, RIVET, type DinoPalette } from './dinoArt';
 
-// Procedural top-down Brontosaurus: body, a long neck with the head (one part that turns
-// at the shoulders), a separate tail (it swings for the whip), and the rider's weapons
-// platform from the Dino Riders box art: a white armored deck with a glass cockpit dome
-// in front, rails at the back, struts down both flanks carrying red gun pods, and a
-// rear turret. All art faces +x (east); rotation frames are produced afterwards.
+// Procedural top-down Brontosaurus: body, head, a neck and a tail made of short links (so
+// they bend: the neck toward where the head looks, the tail when walking and whipping),
+// and the rider's weapons platform from the Dino Riders box art: a white armored deck with
+// a glass cockpit dome in front, rails at the back, struts down both flanks carrying red
+// gun pods, and a rear turret. All art faces +x (east); rotation frames are produced afterwards.
 
 const OUTLINE = '#17110d';
 const NAIL = '#b5a57c';
@@ -32,15 +32,29 @@ export const BRONTO_SCALE = 1.5;
 const S = BRONTO_SCALE;
 const r = (v: number) => Math.round(v * S);
 
-/** Body canvas size; the neck and tail canvases are centered on their own pivots. */
+/** Body canvas size; neck, head and tail segments are separate canvases centered on their joints. */
 export const BRONTO_BODY = r(48);
-/** Pivots in body-local pixels (must match `head.offset` and `tail.offset` in dinos.ts). */
-export const BRONTO_NECK_X = r(12);
-export const BRONTO_TAIL_X = r(-13);
-const NECK_W = r(72);
-const NECK_H = r(22);
-const TAIL_W = r(84);
-const TAIL_H = r(18);
+
+/** One link of a bendable neck or tail: a capsule from its joint (0) to `len` along +x. */
+export interface ChainSegment {
+  len: number;
+  /** Half-thickness at the joint and at the far end. */
+  w0: number;
+  w1: number;
+}
+
+/** Thick at the shoulders, slimmer behind the head: five links from the shoulder pivot. */
+export const BRONTO_NECK: ChainSegment[] = Array.from({ length: 5 }, (_, i) => {
+  const w = (k: number) => (4.6 - (k / 5) * 2.2) * S;
+  return { len: 7.2, w0: w(i), w1: w(i + 1) };
+});
+/** From the root (under the hips) to a whip-thin tip: seven links. */
+export const BRONTO_TAIL: ChainSegment[] = Array.from({ length: 7 }, (_, i) => {
+  const w = (k: number) => (0.5 + (1 - k / 7) ** 1.6 * 5.4) * S;
+  return { len: 8, w0: w(i), w1: w(i + 1) };
+});
+/** How far the head reaches past the end of the neck (for the mouth position). */
+export const BRONTO_HEAD_LEN = r(11);
 
 /** Shading of a long tapering strip (neck, tail): light along the upper-left edge. */
 function hide(p: DinoPalette, ny: number, x: number, y: number): string {
@@ -51,15 +65,70 @@ function hide(p: DinoPalette, ny: number, x: number, y: number): string {
   return p.base;
 }
 
-/** Strip along x from x0 to x1 (canvas pixels) with half-thickness half(x), centered on cy. */
-function strip(c: ReturnType<typeof makeCanvas>, x0: number, x1: number, cy: number, half: (x: number) => number, p: DinoPalette): void {
-  for (let x = Math.floor(x0); x <= x1; x++) {
-    const h = half(x);
-    for (let y = -Math.ceil(h); y <= Math.ceil(h); y++) {
-      if (Math.abs(y + 0.5) > h) continue;
-      px(c, x, cy + y, hide(p, (y + 0.5) / h, x, cy + y));
+/**
+ * One neck or tail link. Canvas center = its joint. The rounded cap behind the joint has no
+ * outline: it sits on top of the previous link's end, so the neck looks like one smooth
+ * piece wherever it bends.
+ */
+export function drawChainSegment(p: DinoPalette, seg: ChainSegment, band: 'pair' | 'spot'): HTMLCanvasElement {
+  const { len, w0, w1 } = seg;
+  const wMax = Math.max(w0, w1);
+  const W = 2 * Math.ceil(len + wMax + 3);
+  const H = 2 * Math.ceil(wMax + 3);
+  const c = makeCanvas(W, H);
+  const cx = W / 2;
+  const cy = H / 2;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const lx = x + 0.5 - cx;
+      const ly = y + 0.5 - cy;
+      const t = Math.min(1, Math.max(0, lx / len));
+      const w = w0 + (w1 - w0) * t;
+      if (Math.hypot(lx - t * len, ly) > w) continue;
+      px(c, x, y, hide(p, ly / w, x, y));
     }
   }
+  // Darker markings in the middle of the link.
+  const mx = cx + len / 2;
+  if (band === 'pair') {
+    px(c, mx, cy - 2, p.dark);
+    px(c, mx, cy + 1, p.dark);
+    px(c, mx + 1, cy - 1, p.dark);
+  } else if (w0 > 2) px(c, mx, cy - 0.5, p.dark);
+  outline(c, OUTLINE);
+  // Drop the outline around the back cap (it would show as a ring at every joint).
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const lx = x + 0.5 - cx;
+      const ly = y + 0.5 - cy;
+      const d = Math.hypot(lx, ly);
+      if (lx < 0.5 && d > w0 && d <= w0 + 1.8) c.ctx.clearRect(x, y, 1, 1);
+    }
+  }
+  return c.canvas;
+}
+
+/** Small head with a blunt snout. Canvas center = the joint at the end of the neck. */
+export function drawBrontosaurusHead(p: DinoPalette): HTMLCanvasElement {
+  const W = r(40);
+  const H = r(16);
+  const c = makeCanvas(W, H);
+  const cx = W / 2;
+  const cy = H / 2;
+  const hx = cx + 4 * S;
+  ellipse(c, hx, cy, 6 * S, 4.4 * S, (nx, ny, x, y) => litShade(nx, ny, x, y, p.dark, p.base, p.light));
+  ellipse(c, hx + 4 * S, cy, 3 * S, 3.2 * S, (nx, ny, x, y) => litShade(nx, ny, x, y, p.dark, p.base, p.light));
+  // Eyes under brow ridges.
+  for (const side of [-1, 1]) {
+    const ey = Math.round(cy + side * 3 * S);
+    rect(c, hx - 2, side < 0 ? ey : ey - 1, 2, 2, EYE);
+    rect(c, hx - 2, side < 0 ? ey - 1 : ey + 1, 2, 1, p.light);
+  }
+  // Nostrils on top of the snout.
+  px(c, hx + 5 * S, cy - 2, p.dark);
+  px(c, hx + 5 * S, cy + 1, p.dark);
+  outline(c, OUTLINE);
+  return c.canvas;
 }
 
 /** Body with four pillar legs. `pose` 0/1 alternates the diagonal leg pairs for walking. */
@@ -103,65 +172,6 @@ export function drawBrontosaurusBody(p: DinoPalette, pose: 0 | 1): HTMLCanvasEle
     px(c, cx + r(sx) + 1, cy + r(sy) + 1, p.dark);
   }
   outline(c, OUTLINE);
-  return c.canvas;
-}
-
-/** Long neck and small head. Canvas center = the shoulder pivot. */
-export function drawBrontosaurusNeck(p: DinoPalette): HTMLCanvasElement {
-  const c = makeCanvas(NECK_W, NECK_H);
-  const cx = NECK_W / 2;
-  const cy = NECK_H / 2;
-  const len = 24 * S;
-  const x0 = cx - 4 * S;
-  // Thick at the shoulders, slimmer behind the head.
-  strip(c, x0, cx + len, cy, (x) => (4.6 - ((x - x0) / (cx + len - x0)) * 2.2) * S, p);
-  // A few darker bands across the neck.
-  for (const t of [6, 12, 18]) {
-    px(c, cx + r(t), cy - 1, p.dark);
-    px(c, cx + r(t), cy + 1, p.dark);
-    px(c, cx + r(t) + 1, cy, p.dark);
-  }
-  // Head: clearly wider than the end of the neck, with a blunt snout.
-  const hx = cx + len + 4 * S;
-  ellipse(c, hx, cy, 6 * S, 4.4 * S, (nx, ny, x, y) => litShade(nx, ny, x, y, p.dark, p.base, p.light));
-  ellipse(c, hx + 4 * S, cy, 3 * S, 3.2 * S, (nx, ny, x, y) => litShade(nx, ny, x, y, p.dark, p.base, p.light));
-  // Eyes under brow ridges.
-  for (const side of [-1, 1]) {
-    const ey = Math.round(cy + side * 3 * S);
-    rect(c, hx - 2, side < 0 ? ey : ey - 1, 2, 2, EYE);
-    rect(c, hx - 2, side < 0 ? ey - 1 : ey + 1, 2, 1, p.light);
-  }
-  // Nostrils on top of the snout.
-  px(c, hx + 5 * S, cy - 2, p.dark);
-  px(c, hx + 5 * S, cy + 1, p.dark);
-  outline(c, OUTLINE);
-  return c.canvas;
-}
-
-/** Long tapering tail. Canvas center = the tail root; it points to -x. */
-export function drawBrontosaurusTail(p: DinoPalette): HTMLCanvasElement {
-  const c = makeCanvas(TAIL_W, TAIL_H);
-  const cx = TAIL_W / 2;
-  const cy = TAIL_H / 2;
-  const x0 = cx - 38 * S;
-  const x1 = cx + 4 * S;
-  // Tapers quickly to a whip-thin tip.
-  strip(c, x0, x1, cy, (x) => (0.5 + ((x - x0) / (x1 - x0)) ** 1.6 * 5.4) * S, p);
-  for (let x = r(-32); x <= 0; x += 5) px(c, cx + x, cy, p.dark);
-  outline(c, OUTLINE);
-  return c.canvas;
-}
-
-/** Body, straight neck and straight tail in one canvas (for the drop shadow). Center = body center. */
-export function drawBrontosaurusWhole(p: DinoPalette, pose: 0 | 1): HTMLCanvasElement {
-  const W = r(120);
-  const H = BRONTO_BODY;
-  const c = makeCanvas(W, H);
-  const cx = W / 2;
-  const cy = H / 2;
-  c.ctx.drawImage(drawBrontosaurusTail(p), cx + BRONTO_TAIL_X - TAIL_W / 2, cy - TAIL_H / 2);
-  c.ctx.drawImage(drawBrontosaurusBody(p, pose), cx - BRONTO_BODY / 2, 0);
-  c.ctx.drawImage(drawBrontosaurusNeck(p), cx + BRONTO_NECK_X - NECK_W / 2, cy - NECK_H / 2);
   return c.canvas;
 }
 

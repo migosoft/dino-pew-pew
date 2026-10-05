@@ -29,7 +29,7 @@ import {
 import { WAVE_VARIANTS, drawDroplet, drawFish, drawFoamRing, drawRipple, drawWave } from './waterArt';
 import { FONT_CHARS, FONT_H, FONT_W, drawFont } from './font';
 import { drawRaptorBody, drawRaptorHead, drawRaptorHeadArmor, drawRaptorSaddleArmor, drawRaptorSideGun } from './raptorArt';
-import { drawBroadsideGun, drawBrontosaurusBody, drawBrontosaurusNeck, drawBrontosaurusPlatform, drawBrontosaurusTail, drawBrontosaurusWhole, drawTailGun } from './brontosaurusArt';
+import { BRONTO_NECK, BRONTO_TAIL, drawBroadsideGun, drawBrontosaurusBody, drawBrontosaurusHead, drawBrontosaurusPlatform, drawChainSegment, drawTailGun } from './brontosaurusArt';
 import { BUSH_VARIANTS, CARCASS_KINDS, FERN_VARIANTS, drawBush, drawCarcass, drawFernPatch, type FoodStage } from './foodArt';
 
 /** Rotation frames for parts that turn (bodies, heads, weapons). */
@@ -77,13 +77,24 @@ export function generateTextures(scene: Phaser.Scene): void {
       addStrip(scene, `velociraptor_armor_${key}`, drawRaptorSaddleArmor(pal), DIRS);
       addStrip(scene, `velociraptor_headArmor_${key}`, drawRaptorHeadArmor(pal), DIRS);
     }
+    // Neck and tail are chains of links that bend (client/render/chains.ts). Shadows are
+    // stamped from opaque masks into one texture per dino, so overlapping links don't darken it.
+    const mask = (src: HTMLCanvasElement) => silhouette(src, '#000000');
     for (const pose of [0, 1] as const) {
-      addStrip(scene, `brontosaurus_body_${key}_${pose}`, drawBrontosaurusBody(pal, pose), DIRS);
-      if (slot === 0) addStrip(scene, `brontosaurus_shadow_${pose}`, silhouette(drawBrontosaurusWhole(pal, pose), 'rgba(0,0,0,0.32)'), DIRS);
+      const body = drawBrontosaurusBody(pal, pose);
+      addStrip(scene, `brontosaurus_body_${key}_${pose}`, body, DIRS);
+      if (slot === 0) addStrip(scene, `brontosaurus_bodyMask_${pose}`, mask(body), DIRS);
     }
-    // The neck and head turn together, so the whole neck is the "head" part.
-    addStrip(scene, `brontosaurus_head_${key}`, drawBrontosaurusNeck(pal), DIRS);
-    addStrip(scene, `brontosaurus_tail_${key}`, drawBrontosaurusTail(pal), DIRS);
+    const head = drawBrontosaurusHead(pal);
+    addStrip(scene, `brontosaurus_head_${key}`, head, DIRS);
+    if (slot === 0) addStrip(scene, `brontosaurus_head_mask`, mask(head), DIRS);
+    for (const [part, segs, band] of [['neck', BRONTO_NECK, 'pair'], ['tail', BRONTO_TAIL, 'spot']] as const) {
+      segs.forEach((seg, i) => {
+        const link = drawChainSegment(pal, seg, band);
+        addStrip(scene, `brontosaurus_${part}${i}_${key}`, link, DIRS);
+        if (slot === 0) addStrip(scene, `brontosaurus_${part}${i}_mask`, mask(link), DIRS);
+      });
+    }
     if (key !== 'wild') addStrip(scene, `brontosaurus_armor_${key}`, drawBrontosaurusPlatform(pal), DIRS);
     addStrip(scene, `rider_${key}`, drawRider(pal), DIRS);
     addImage(scene, `totem_${key}`, drawTotem(pal.tunic, pal.tunicLight));

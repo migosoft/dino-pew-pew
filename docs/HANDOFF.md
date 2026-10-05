@@ -45,8 +45,13 @@ A top-down pixel-art multiplayer shooter. Players ride armed dinosaurs in one pe
    - A dash is scaled the same way. A leap is airborne and ignores water.
    - Calm wild dinos (wander, graze) steer around deep water (`clearHeading` in `ai.ts`). In a 2-minute headless run they spent 0.1% of their time in deep water, which covers 10% of the map.
 3. **Brontosaurus** (`dinos.ts`): 220 HP, speed 50, radius 22, bounty 40, a wild herbivore 1 time in 4. Its art is drawn at `BRONTO_SCALE` (1.5) in `brontosaurusArt.ts`, and the sizes in `dinos.ts` (radius, head, tail, seat, mounts, whip reach) use the same factor, so change them together.
-   - **Neck and head** are one `head` part that pivots at the shoulders. `HeadDef.under` draws it below the body.
-   - **`TailDef`**: the tail is its own sprite that sways while walking and swings during the whip.
+   - **Bending neck and tail** (`src/client/render/chains.ts`, drawn by `DinoView.updateChain`):
+     - The neck is 5 links from the shoulder pivot (`head.offset`), with the head at the end. The head yaw is spread over the links, so the neck curves toward where the head looks.
+     - The tail is 7 links from `TailDef.offset`. A walking sway travels down it as a wave, and the whip swings it with a lag toward the tip.
+     - Each link is a capsule sprite (`drawChainSegment`) whose back cap has no outline, so the joints don't show.
+     - **Shadow:** opaque masks of the body, every link and the head are stamped into one render texture per dino and shown at shadow strength. It follows every bend and doesn't darken where pieces overlap.
+     - `/?preview=brontosaurus&yaw=0.7&whip=0.3` shows a turned head and a frozen whip.
+     - The sim is unchanged: `head.offset` stays the neck pivot and aiming uses the body mounts.
    - **`seat`** puts the rider sprite in the cockpit dome.
    - **Weapons platform:** four `broadsideGun` mounts (±90°, two per flank) and a rear `tailGun` (180°).
      - **`fireMode: 'side'`**: `selectSideMounts` (`aiming.ts`) fires every mount whose arc holds the cursor. Cursor on the left: the left pair fires; behind: the tail gun; straight ahead: nothing.

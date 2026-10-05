@@ -1,32 +1,73 @@
 import Phaser from 'phaser';
-import type { Dino } from '../../sim/types';
+import type { Dino, Vec2 } from '../../sim/types';
 import { getDino } from '../../sim/defs/dinos';
 import { localToWorld } from '../../sim/math';
 import { mountFrame } from '../../sim/systems/aiming';
 import { frameForAngle } from './textures/pixel';
 import { DIRS } from './textures';
 import { DEPTH } from './depth';
+import { CHAINS, chainLength, type ChainSpec } from './chains';
 
 const STRIDE_PER_POSE = 7;
 /** Peak height (px) of a leap above the shadow. */
 const LEAP_HEIGHT = 10;
-/** How far (radians) a tail sweeps to each side during a whip, and sways while walking. */
+/** How far (radians) a tail tip sweeps to each side during a whip, and sways while walking. */
 const WHIP_SWING = 1.5;
 const TAIL_SWAY = 0.12;
+/** A whip runs down the tail: each link lags the one before it by this share of the swing. */
+const WHIP_LAG = 0.05;
+/** Phase lag (radians) of the walking sway between neighbouring tail links: a wave runs down the tail. */
+const SWAY_WAVE = 0.8;
+/** Shadow strength (the per-piece shadow textures of other species use the same). */
+const SHADOW_ALPHA = 0.32;
 
 /** What a dino is standing in: shadows vanish in deep water and a ring of foam shows instead. */
 export type Wading = 'dry' | 'shallow' | 'deep';
 
+/** A placed part: world position and the angle its art (+x) points to. */
+interface Placed {
+  x: number;
+  y: number;
+  angle: number;
+}
+
+/** Neck and tail links of a chained species, their shadow stamps, and the render texture they are stamped into. */
+interface ChainParts {
+  spec: ChainSpec;
+  neck: Phaser.GameObjects.Image[];
+  tail: Phaser.GameObjects.Image[];
+  shadow: Phaser.GameObjects.RenderTexture;
+  /** Off-screen stamps in draw order: tail links, body, neck links, head. */
+  stamps: Phaser.GameObjects.Image[];
+  size: number;
+}
+
+/**
+ * Walk a chain of links from `root`: link i points along angles[i] and the next link starts
+ * where it ends. Returns each link's joint and angle, plus the end point.
+ */
+function placeChain(root: Vec2, lens: number[], angles: number[]): { links: Placed[]; end: Vec2 } {
+  const links: Placed[] = [];
+  let x = root.x;
+  let y = root.y;
+  lens.forEach((len, i) => {
+    links.push({ x, y, angle: angles[i] });
+    x += Math.cos(angles[i]) * len;
+    y += Math.sin(angles[i]) * len;
+  });
+  return { links, end: { x, y } };
+}
+
 /**
  * Sprites for one dino: shadow, body, head, and — when ridden — armor, rider and weapons.
+ * Species in CHAINS have a neck and tail made of links that bend, and one stamped shadow.
  * Fed a fresh interpolated Dino every frame.
  */
 export class DinoView {
-  private shadow: Phaser.GameObjects.Image;
+  private shadow?: Phaser.GameObjects.Image;
   private body: Phaser.GameObjects.Image;
   private head?: Phaser.GameObjects.Image;
-  /** A tail drawn as its own part (species with `tail` and `<kind>_tail_<palette>` art). */
-  private tail?: Phaser.GameObjects.Image;
+  private chain?: ChainParts;
   private foam: Phaser.GameObjects.Image;
   /** Rider armor over the body and head; only species with `<kind>_armor_*` textures have it. */
   private armor?: Phaser.GameObjects.Image;
@@ -38,10 +79,30 @@ export class DinoView {
 
   constructor(scene: Phaser.Scene, d: Dino, private palette: string) {
     const def = getDino(d.kind);
-    this.shadow = scene.add.image(0, 0, `${d.kind}_shadow_0`, 0).setDepth(DEPTH.shadow);
+    const spec = CHAINS[d.kind];
+    if (spec) {
+      const link = (part: string, i: number) => scene.add.image(0, 0, `${d.kind}_${part}${i}_${palette}`, 0);
+      const stamp = (key: string) => scene.make.image({ key, frame: 0, add: false });
+      // Big enough for the neck and tail stretched out in any direction.
+      const reach = Math.max((def.head?.offset.x ?? 0) + chainLength(spec.neck) + spec.headLen, -(def.tail?.offset.x ?? 0) + chainLength(spec.tail));
+      const size = 2 * Math.ceil(reach + 24);
+      this.chain = {
+        spec,
+        neck: spec.neck.map((_, i) => link('neck', i)),
+        tail: spec.tail.map((_, i) => link('tail', i)),
+        shadow: scene.add.renderTexture(0, 0, size, size).setOrigin(0.5).setDepth(DEPTH.shadow).setAlpha(SHADOW_ALPHA),
+        stamps: [
+          ...spec.tail.map((_, i) => stamp(`${d.kind}_tail${i}_mask`)),
+          stamp(`${d.kind}_bodyMask_0`),
+          ...spec.neck.map((_, i) => stamp(`${d.kind}_neck${i}_mask`)),
+          stamp(`${d.kind}_head_mask`),
+        ],
+        size,
+      };
+    } else {
+      this.shadow = scene.add.image(0, 0, `${d.kind}_shadow_0`, 0).setDepth(DEPTH.shadow);
+    }
     this.foam = scene.add.image(0, 0, 'foamRing').setVisible(false);
-    const tailKey = `${d.kind}_tail_${palette}`;
-    if (def.tail && scene.textures.exists(tailKey)) this.tail = scene.add.image(0, 0, tailKey, 0);
     this.body = scene.add.image(0, 0, `${d.kind}_body_${palette}_0`, 0);
     if (def.head) this.head = scene.add.image(0, 0, `${d.kind}_head_${palette}`, 0);
     const ridden = d.playerId !== null;
@@ -76,11 +137,12 @@ export class DinoView {
     const z = DEPTH.world + y + (lift > 0 ? 40 : 0);
     // In water the shadow falls on the surface: fainter in the shallows, gone in deep water.
     const wet = lift > 0 ? 'dry' : wading;
+    const shadowAlpha = wet === 'deep' ? 0 : wet === 'shallow' ? 0.55 : 1;
     this.shadow
-      .setTexture(`${d.kind}_shadow_${pose}`, f)
+      ?.setTexture(`${d.kind}_shadow_${pose}`, f)
       .setPosition(Math.round(x) + 3, Math.round(y) + 4)
       .setScale(1 - (0.2 * h) / LEAP_HEIGHT)
-      .setAlpha(wet === 'deep' ? 0 : wet === 'shallow' ? 0.55 : 1);
+      .setAlpha(shadowAlpha);
     this.foam
       .setVisible(wet === 'deep')
       .setPosition(Math.round(x), Math.round(y))
@@ -88,16 +150,11 @@ export class DinoView {
       .setRotation(heading)
       .setDepth(z - 0.3);
 
-    if (this.tail && def.tail) {
-      const tp = localToWorld(d, heading, def.tail.offset);
-      const whip = d.abilityT >= 0 && ab?.kind === 'whip' ? Math.sin(Math.PI * 2 * Math.min(1, d.abilityT / ab.duration)) * WHIP_SWING : 0;
-      const sway = Math.abs(d.speed) > 2 ? Math.sin(d.stride / 9) * TAIL_SWAY : 0;
-      this.tail.setFrame(frameForAngle(heading + whip + sway, DIRS)).setPosition(sx(tp.x), sy(tp.y)).setDepth(z - 0.1);
-    }
     this.body.setTexture(`${d.kind}_body_${this.palette}_${pose}`, f).setPosition(Math.round(x), Math.round(y) - lift).setDepth(z);
     this.armor?.setFrame(f).setPosition(Math.round(x), Math.round(y) - lift).setDepth(z + 0.15);
 
-    if (this.head && def.head) {
+    if (this.chain) this.updateChain(d, z, pose, f, shadowAlpha);
+    else if (this.head && def.head) {
       const hp = localToWorld(d, heading, def.head.offset);
       const hf = frameForAngle(heading + d.headYaw, DIRS);
       this.head.setFrame(hf).setPosition(sx(hp.x), sy(hp.y)).setDepth(def.head.under ? z - 0.05 : z + 0.2);
@@ -125,7 +182,7 @@ export class DinoView {
         .setDepth(z + 0.3);
     }
 
-    for (const p of [this.body, this.head, this.tail, this.armor, this.headArmor, this.rider]) {
+    for (const p of [this.body, this.head, this.armor, this.headArmor, this.rider, ...(this.chain ? [...this.chain.neck, ...this.chain.tail] : [])]) {
       if (!p) continue;
       p.setScale(scale);
       if (d.hitFlash > 0) p.setTintFill(0xffffff);
@@ -133,7 +190,59 @@ export class DinoView {
     }
   }
 
+  /**
+   * Bend the neck toward where the head looks (the head yaw spread over the links) and the
+   * tail with a walking sway that travels down it and a whip that lags toward the tip. Links
+   * further out draw over the ones before, all below the body. Then stamp the shadow.
+   */
+  private updateChain(d: Dino, z: number, pose: number, bodyFrame: number, shadowAlpha: number): void {
+    const chain = this.chain!;
+    const def = getDino(d.kind);
+    const { spec } = chain;
+    const n = spec.neck.length;
+    const neckRoot = localToWorld(d, d.heading, def.head?.offset ?? { x: def.radius, y: 0 });
+    const neckAngles = spec.neck.map((_, i) => d.heading + (d.headYaw * (i + 1)) / (n + 1));
+    const neck = placeChain(neckRoot, spec.neck.map((s) => s.len), neckAngles);
+    const headAt: Placed = { ...neck.end, angle: d.heading + d.headYaw };
+
+    const m = spec.tail.length;
+    const ab = def.ability;
+    const whipT = d.abilityT >= 0 && ab?.kind === 'whip' ? d.abilityT / ab.duration : -1;
+    const moving = Math.abs(d.speed) > 2;
+    const tailAngles = spec.tail.map((_, i) => {
+      const reach = (i + 1) / m;
+      const t = whipT - i * WHIP_LAG;
+      const whip = whipT >= 0 && t > 0 && t < 1 ? Math.sin(Math.PI * 2 * t) * WHIP_SWING * reach ** 1.2 : 0;
+      const sway = moving ? Math.sin(d.stride / 9 - i * SWAY_WAVE) * TAIL_SWAY * (0.4 + reach) : 0;
+      return d.heading + Math.PI + whip + sway;
+    });
+    const tail = placeChain(localToWorld(d, d.heading, def.tail?.offset ?? { x: -def.radius, y: 0 }), spec.tail.map((s) => s.len), tailAngles);
+
+    const put = (img: Phaser.GameObjects.Image, p: Placed, depth: number) =>
+      img.setFrame(frameForAngle(p.angle, DIRS)).setPosition(Math.round(p.x), Math.round(p.y)).setDepth(depth);
+    neck.links.forEach((p, i) => put(chain.neck[i], p, z - 0.09 + i * 0.005));
+    if (this.head) put(this.head, headAt, z - 0.05);
+    tail.links.forEach((p, i) => put(chain.tail[i], p, z - 0.2 + i * 0.005));
+
+    // One shadow for the whole silhouette: opaque stamps into a texture shown at shadow strength.
+    const rt = chain.shadow;
+    rt.setPosition(Math.round(d.x) + 3, Math.round(d.y) + 4).setAlpha(SHADOW_ALPHA * shadowAlpha);
+    if (shadowAlpha <= 0) return;
+    const half = chain.size / 2;
+    const pieces: [Placed, number][] = [
+      ...tail.links.map((p): [Placed, number] => [p, frameForAngle(p.angle, DIRS)]),
+      [{ x: d.x, y: d.y, angle: d.heading }, bodyFrame],
+      ...neck.links.map((p): [Placed, number] => [p, frameForAngle(p.angle, DIRS)]),
+      [headAt, frameForAngle(headAt.angle, DIRS)],
+    ];
+    chain.stamps[m].setTexture(`${d.kind}_bodyMask_${pose}`);
+    pieces.forEach(([p, frame], i) => chain.stamps[i].setFrame(frame).setPosition(Math.round(p.x - d.x) + half, Math.round(p.y - d.y) + half));
+    rt.clear().draw(chain.stamps);
+  }
+
   destroy(): void {
-    for (const s of [this.shadow, this.foam, this.tail, this.body, this.head, this.armor, this.headArmor, this.rider, ...this.weapons]) s?.destroy();
+    const chain = this.chain;
+    for (const s of [this.shadow, this.foam, this.body, this.head, this.armor, this.headArmor, this.rider, ...this.weapons]) s?.destroy();
+    if (chain) for (const s of [...chain.neck, ...chain.tail, ...chain.stamps, chain.shadow]) s.destroy();
   }
 }
