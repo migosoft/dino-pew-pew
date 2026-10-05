@@ -103,6 +103,6 @@ describe('towers', () => {
     raptor.ai = makeWildAi(s);
     near(s, tower, raptor);
     expect(() => run(s, 3)).not.toThrow();
-    expect(raptor.lastAttacker === tower.id || raptor.hp < raptor.maxHp).toBe(true);
+    expect(raptor.lastAttacker).toBe(tower.id);
   });
 });

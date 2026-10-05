@@ -22,6 +22,8 @@ export const CAMP = {
   campBounty: 300,
   /** Turret turn rate, rad/s. */
   towerTurnSpeed: 3,
+  /** Radians of aim error under which the turret fires. */
+  towerAimTolerance: 0.12,
   /** Barrel length: bolts start this far from the tower centre. */
   towerMuzzle: 12,
   /** Player spawn ring around the camp centre: inner and outer radius, and the fallback distance. */

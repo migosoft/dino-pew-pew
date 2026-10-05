@@ -140,6 +140,6 @@ export function updateStructures(state: GameState, dt: number): void {
     const diff = angleDiff(angleTo(s, aim), s.angle);
     const turn = CAMP.towerTurnSpeed * dt;
     s.angle = wrapAngle(s.angle + clamp(diff, -turn, turn));
-    if (Math.abs(diff) < 0.12 && s.cooldown <= 0) fireTower(state, s);
+    if (Math.abs(diff) < CAMP.towerAimTolerance && s.cooldown <= 0) fireTower(state, s);
   }
 }
