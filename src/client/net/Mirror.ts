@@ -1,7 +1,7 @@
 import type { Dino, Projectile } from '../../sim/types';
 import { DT, TICK_RATE } from '../../sim/types';
 import { lerp, lerpAngle } from '../../sim/math';
-import { decodeDino, type PlayerInfo, type SnapshotMsg, type TeamInfo, type TimedEvent } from '../../net/protocol';
+import { decodeDino, decodeStructure, type PlayerInfo, type RoundInfo, type SnapshotMsg, type StructureInfo, type TeamInfo, type TimedEvent } from '../../net/protocol';
 
 /** Render this many ticks behind the newest server state (100 ms = 2 snapshots of jitter room). */
 export const INTERP_TICKS = 6;
@@ -35,6 +35,8 @@ export class Mirror {
   /** Snapshots leave players and teams out while unchanged: keep the last ones sent. */
   private lastPlayers: PlayerInfo[] = [];
   private lastTeams: TeamInfo[] = [];
+  private lastRound: RoundInfo = { phase: 'waiting', timer: 0, winner: null };
+  private structureCache = new WeakMap<SnapshotMsg, StructureInfo[]>();
   private projectiles = new Map<number, ClientProjectile>();
   /** Where projectiles ran out of range since the last takeSpent() (for splashes). */
   private spent: { x: number; y: number }[] = [];
@@ -47,6 +49,7 @@ export class Mirror {
     this.decoded.set(snap, byId);
     if (snap.players) this.lastPlayers = snap.players;
     if (snap.teams) this.lastTeams = snap.teams;
+    if (snap.round) this.lastRound = snap.round;
     if (this.snaps.length > MAX_SNAPSHOTS) this.snaps.shift();
     for (const e of snap.events) this.events.push(e);
 
@@ -164,5 +167,22 @@ export class Mirror {
 
   teams(): TeamInfo[] {
     return this.lastTeams;
+  }
+
+  round(): RoundInfo {
+    return this.lastRound;
+  }
+
+  /** Structures as of the newest snapshot at or before `tick` (they barely move: no interpolation). */
+  structuresAt(tick: number): StructureInfo[] {
+    let snap = this.snaps[0];
+    for (const s of this.snaps) if (s.tick <= tick) snap = s;
+    if (!snap) return [];
+    let list = this.structureCache.get(snap);
+    if (!list) {
+      list = snap.structures.map(decodeStructure);
+      this.structureCache.set(snap, list);
+    }
+    return list;
   }
 }

@@ -1,7 +1,14 @@
 import type { InputCommand } from '../../sim/types';
+import type { RoundSettings } from '../../sim/maps';
 import type { UpgradeStat } from '../../sim/upgrades';
 import { encodeInput, type CarcassTuple, type PlantTuple, type ServerMsg, type WelcomeMsg } from '../../net/protocol';
 import { Mirror } from './Mirror';
+
+export interface JoinRequest {
+  team: string;
+  kind: string;
+  setup?: RoundSettings;
+}
 
 export type NetStatus = 'connecting' | 'joining' | 'playing' | 'closed';
 
@@ -12,7 +19,7 @@ export function gameSocketUrl(): string {
 
 /** WebSocket connection to the game server: join, stream inputs, collect snapshots. */
 export class NetClient {
-  readonly mirror = new Mirror();
+  mirror = new Mirror();
   status: NetStatus = 'connecting';
   welcome: WelcomeMsg | null = null;
   error: string | null = null;
@@ -25,11 +32,11 @@ export class NetClient {
   /** Server notices (e.g. refused purchases) not yet shown. */
   notices: string[] = [];
 
-  constructor(url: string, team: string, kind: string) {
+  constructor(url: string, join: JoinRequest) {
     this.ws = new WebSocket(url);
     this.ws.onopen = () => {
       this.status = 'joining';
-      this.ws.send(JSON.stringify({ t: 'join', team, kind }));
+      this.ws.send(JSON.stringify({ t: 'join', ...join }));
     };
     this.ws.onmessage = (ev) => this.receive(JSON.parse(ev.data as string) as ServerMsg);
     this.ws.onclose = () => {
@@ -40,10 +47,13 @@ export class NetClient {
   private receive(msg: ServerMsg): void {
     switch (msg.t) {
       case 'welcome':
+        // A new round (or the first): fresh mirror and food queues, the old round's state is gone.
+        this.mirror = new Mirror();
+        this.plantUpdates = [...msg.plants];
+        this.carcassUpdates = [...msg.carcasses];
+        this.carcassesGone = [];
         this.welcome = msg;
         this.status = 'playing';
-        this.plantUpdates.push(...msg.plants);
-        this.carcassUpdates.push(...msg.carcasses);
         this.onWelcome?.(msg);
         break;
       case 'snap':
@@ -84,6 +94,10 @@ export class NetClient {
 
   buy(stat: UpgradeStat): void {
     if (this.status === 'playing') this.ws.send(JSON.stringify({ t: 'buy', stat }));
+  }
+
+  switchTeam(team: string, kind: string): void {
+    if (this.status === 'playing') this.ws.send(JSON.stringify({ t: 'switch', team, kind }));
   }
 
   close(): void {

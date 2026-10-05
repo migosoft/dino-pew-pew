@@ -2,8 +2,9 @@ import Phaser from 'phaser';
 import type { Dino, World } from '../../sim/types';
 import { clamp } from '../../sim/math';
 import { generateWorld } from '../../sim/worldgen';
-import type { PlayerInfo, TimedEvent, WelcomeMsg } from '../../net/protocol';
-import { NetClient, gameSocketUrl } from '../net/NetClient';
+import { worldOptionsFor } from '../../sim/maps';
+import type { PlayerInfo, TeamInfo, TimedEvent, WelcomeMsg } from '../../net/protocol';
+import { NetClient, gameSocketUrl, type JoinRequest } from '../net/NetClient';
 import { PlayerInput } from '../input/playerInput';
 import { WorldView } from '../render/WorldView';
 import { WaterView, wadingOf } from '../render/WaterView';
@@ -19,11 +20,13 @@ import { DEPTH } from '../render/depth';
 import { FONT_KEY } from '../render/textures';
 import { paletteKey } from '../teams';
 import { ShopPanel } from '../render/ShopPanel';
+import { EliminatedPanel } from '../render/EliminatedPanel';
 import { BASE_RADIUS } from '../../sim/players';
 import { UPGRADE_STATS } from '../../sim/upgrades';
 
 const CAMERA_LOOKAHEAD = 0.18;
 const CAMERA_LOOKAHEAD_MAX = 40;
+const SPECTATE_SPEED = 400;
 const INPUT_INTERVAL_MS = 1000 / 60;
 
 /** The live match as seen by this client: server snapshots, interpolated and drawn. */
@@ -39,6 +42,9 @@ export class GameScene extends Phaser.Scene {
   private lastFeedFx = 0;
   private lastDashFx = 0;
   private shop!: ShopPanel;
+  private eliminated!: EliminatedPanel;
+  /** Free camera while spectating, starting at the fallen camp. */
+  private spectate: { x: number; y: number } | null = null;
   private inBase = false;
   private fx!: Effects;
   private arc!: ArcIndicator;
@@ -49,6 +55,7 @@ export class GameScene extends Phaser.Scene {
   private camY = 0;
   private lastInput = 0;
   private leaving = false;
+  private restarting = false;
 
   constructor() {
     super('game');
@@ -58,17 +65,27 @@ export class GameScene extends Phaser.Scene {
     this.world = null;
     this.dinoViews = new Map();
     this.leaving = false;
+    this.restarting = false;
+    this.spectate = null;
+    this.camX = 0;
+    this.camY = 0;
   }
 
-  create(data: { team: string; kind: string }): void {
+  create(data: { join?: JoinRequest; net?: NetClient }): void {
     // The default cursor is shared by all scenes: hide it again, the reticle replaces it.
     this.input.setDefaultCursor('none');
     const cam = this.cameras.main;
     this.status = pixelText(this, Math.round(cam.width / 2), Math.round(cam.height / 2), 'JOINING...').setOrigin(0.5);
-    this.net = new NetClient(gameSocketUrl(), data.team, data.kind);
-    this.net.onWelcome = (w) => this.startWorld(w);
+    this.net = data.net ?? new NetClient(gameSocketUrl(), data.join!);
+    this.net.onWelcome = () => {
+      if (!this.world) return this.startWorld(this.net.welcome!);
+      // New round: rebuild the whole scene on the same connection.
+      this.restarting = true;
+      this.scene.restart({ net: this.net });
+    };
+    if (this.net.welcome) this.startWorld(this.net.welcome);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.net.close();
+      if (!this.restarting) this.net.close();
       this.worldView?.destroy();
       this.waterView?.destroy();
     });
@@ -80,7 +97,7 @@ export class GameScene extends Phaser.Scene {
 
   private startWorld(w: WelcomeMsg): void {
     this.status.setText('');
-    this.world = generateWorld(w.seed);
+    this.world = generateWorld(w.seed, worldOptionsFor(w.map, w.teams, w.tiles));
     this.worldView = new WorldView(this, this.world);
     this.waterView = new WaterView(this, this.world);
     this.foodView = new FoodView(this, this.world.food);
@@ -91,6 +108,7 @@ export class GameScene extends Phaser.Scene {
     this.playerInput = new PlayerInput(this);
     this.reticle = this.add.image(0, 0, 'reticle').setDepth(DEPTH.hud + 1);
     this.shop = new ShopPanel(this, (stat) => this.net.buy(stat));
+    this.eliminated = new EliminatedPanel(this, (team, kind) => this.net.switchTeam(team, kind));
     const kb = this.input.keyboard!;
     kb.on('keydown-E', () => {
       if (this.inBase || this.shop.isOpen) this.shop.toggle();
@@ -101,7 +119,7 @@ export class GameScene extends Phaser.Scene {
     const command = this.playerInput.command.bind(this.playerInput);
     this.playerInput.command = () => {
       const c = command();
-      return this.shop.isOpen ? { ...c, fire: false, ability: false } : c;
+      return this.shop.isOpen || this.eliminated.isOpen ? { ...c, fire: false, ability: false } : c;
     };
     const cam = this.cameras.main;
     cam.setBounds(0, 0, this.world.width, this.world.height);
@@ -122,7 +140,7 @@ export class GameScene extends Phaser.Scene {
     const rt = mirror.renderTick(performance.now());
     const players = mirror.players();
     const teams = mirror.teams();
-    for (const e of mirror.takeEvents(rt)) this.handleEvent(e, players);
+    for (const e of mirror.takeEvents(rt)) this.handleEvent(e, players, teams);
 
     this.foodView.setPlants(this.net.takePlantUpdates());
     const carcasses = this.net.takeCarcassUpdates();
@@ -144,7 +162,7 @@ export class GameScene extends Phaser.Scene {
         else this.fx.dashTrail(tx, ty);
       }
     }
-    this.syncDinoViews(dinos);
+    this.syncDinoViews(dinos, teams);
     this.waterView.update(delta, dinos);
     // Spent bolts only plink: a small ring and a couple of droplets.
     for (const p of mirror.takeSpent()) this.waterView.splash(p.x, p.y, 3, 2);
@@ -154,13 +172,24 @@ export class GameScene extends Phaser.Scene {
     this.worldView.updateBases(teams);
     this.worldView.update(myDino);
     this.arc.update(myDino, this.playerInput.aimWorld());
-    this.followCamera(myDino ?? teams.find((t) => t.id === meInfo?.team)?.base);
+    const myBase = teams.find((t) => t.id === meInfo?.team)?.base;
+    this.eliminated.update(meInfo, teams, mirror.round());
+    if (this.eliminated.spectating) {
+      // Free camera: WASD pans it, starting at the fallen camp.
+      this.spectate ??= { x: myBase?.x ?? 0, y: myBase?.y ?? 0 };
+      const cmd = this.playerInput.command();
+      this.spectate.x = clamp(this.spectate.x + cmd.turn * SPECTATE_SPEED * (delta / 1000), 0, this.world.width);
+      this.spectate.y = clamp(this.spectate.y - cmd.throttle * SPECTATE_SPEED * (delta / 1000), 0, this.world.height);
+      this.followCamera(this.spectate);
+    } else {
+      this.spectate = null;
+      this.followCamera(myDino ?? myBase);
+    }
 
     const cam = this.cameras.main;
     const ptr = this.input.activePointer;
     const rw = cam.getWorldPoint(ptr.x, ptr.y);
     this.reticle.setPosition(Math.round(rw.x), Math.round(rw.y));
-    const myBase = teams.find((t) => t.id === meInfo?.team)?.base;
     this.inBase = !!(myDino && myBase && (myDino.x - myBase.x) ** 2 + (myDino.y - myBase.y) ** 2 < BASE_RADIUS * BASE_RADIUS);
     if (!this.inBase && this.shop.isOpen) this.shop.close();
     this.shop.update(meInfo);
@@ -168,8 +197,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.update({ me: meInfo, myDino, dinos, players, teams });
   }
 
-  private syncDinoViews(dinos: Dino[]): void {
-    const teams = this.net.mirror.teams();
+  private syncDinoViews(dinos: Dino[], teams: TeamInfo[]): void {
     const view = this.cameras.main.worldView;
     const now = performance.now();
     const seen = new Set<number>();
@@ -187,7 +215,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private handleEvent(e: TimedEvent, players: PlayerInfo[]): void {
+  private handleEvent(e: TimedEvent, players: PlayerInfo[], teams: TeamInfo[]): void {
     switch (e.type) {
       case 'shot':
         this.fx.muzzle(e.x, e.y);
@@ -241,7 +269,7 @@ export class GameScene extends Phaser.Scene {
           players.find((p) => p.id === e.killer),
           players.find((p) => p.id === e.victim),
           e.victimKind,
-          this.net.mirror.teams(),
+          teams,
         );
         break;
     }

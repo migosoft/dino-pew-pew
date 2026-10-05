@@ -66,3 +66,15 @@ describe('client mirror', () => {
     }
   });
 });
+
+it('keeps the last round info and decodes structures', () => {
+  const s = createMatch(9, SMALL, { teams: 2 });
+  const m = new Mirror();
+  m.push({ ...buildSnapshot(s, []), ack: 0 }, 0);
+  expect(m.round().phase).toBe('waiting');
+  s.tick = 3;
+  m.push({ ...buildSnapshot(s, [], { round: null }), ack: 0 }, 50);
+  expect(m.round().phase).toBe('waiting');
+  expect(m.structuresAt(3)).toHaveLength(12);
+  expect(m.structuresAt(3)[0].kind).toBe('camp');
+});
