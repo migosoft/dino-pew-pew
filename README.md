@@ -1,4 +1,4 @@
-# Dinoriders
+# Dino Pew Pew
 
 Top-down pixel-retro multiplayer shooter: ride an armed dinosaur through an 8192 px prehistoric
 world and **destroy the other teams' camps**. Every team has a camp building defended by five

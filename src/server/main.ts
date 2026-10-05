@@ -23,7 +23,7 @@ const { server } = createAppServer({
 
 match.start();
 server.listen(PORT, () => {
-  console.log(`Dinoriders server on http://0.0.0.0:${PORT} (static: ${STATIC_DIR}, world seed ${SEED}, ${preset ? `preset ${preset.teams} teams on ${preset.map}` : 'setup by first player'})`);
+  console.log(`Dino Pew Pew server on http://0.0.0.0:${PORT} (static: ${STATIC_DIR}, world seed ${SEED}, ${preset ? `preset ${preset.teams} teams on ${preset.map}` : 'setup by first player'})`);
 });
 
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {

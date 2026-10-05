@@ -47,7 +47,7 @@ export class JoinScene extends Phaser.Scene {
   private title(sub: string, onClick?: () => void): void {
     this.clear();
     const cam = this.cameras.main;
-    this.objects.push(pixelText(this, Math.round(cam.width / 2), 40, 'DINORIDERS', 0xffe066).setOrigin(0.5).setScale(3));
+    this.objects.push(pixelText(this, Math.round(cam.width / 2), 40, 'DINO PEW PEW', 0xffe066).setOrigin(0.5).setScale(3));
     const s = pixelText(this, Math.round(cam.width / 2), 70, sub).setOrigin(0.5);
     this.objects.push(s);
     if (onClick) this.input.once('pointerdown', onClick);

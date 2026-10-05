@@ -12,7 +12,7 @@ let dir = '';
 
 beforeAll(async () => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dinoriders-static-'));
-  fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>Dinoriders</title>');
+  fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>Dino Pew Pew</title>');
   fs.mkdirSync(path.join(dir, 'assets'));
   fs.writeFileSync(path.join(dir, 'assets', 'app.js'), 'console.log(1)');
   app = createAppServer({ staticDir: dir, onConnection: (ws) => ws.send(JSON.stringify({ type: 'hello' })) });
@@ -37,7 +37,7 @@ describe('app server', () => {
     expect(js.headers.get('content-type')).toContain('javascript');
     expect(js.headers.get('cache-control')).toContain('immutable');
     const page = await fetch(`http://${base}/some/route`);
-    expect(await page.text()).toContain('Dinoriders');
+    expect(await page.text()).toContain('Dino Pew Pew');
   });
 
   it('refuses path traversal', async () => {

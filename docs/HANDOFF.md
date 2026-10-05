@@ -1,536 +1,190 @@
-# Dinoriders: Handoff
+# Dino Pew Pew: Handoff
 
-**Status (2026-10-05, after the camp siege):** the camp siege (rounds, destructible camps and towers, map setup, an 8192 px world) is implemented on the branch `camp-siege`. All 183 tests pass and the type-check is clean. See [Latest session: camp siege](#latest-session-camp-siege).
-- Before it, the performance pass is described under [Performance pass](#performance-pass-2026-10-05). The deferred findings are in the [Performance backlog](#performance-backlog).
-- The phase 9 art changes (including the T-Rex carcass, 9g) were checked in headless Chrome screenshots of `/?preview` and of the carcass art. The walk cadence has **not** been watched in a running game yet.
-- The Docker image on :8080 is stale (it serves protocol 3, so this branch's client can't join it). Run `docker compose up --build -d` when the user wants it.
+**Status (2026-10-05):** everything is on `master` and pushed (`origin/master` = `fbd0b56`, the merge of PR #1, the camp siege). All 186 tests pass, `tsc` is clean and `npm run build` passes. There are no open branches; `origin/camp-siege` is merged and can be deleted. After that merge, the game was renamed from "Dinoriders" to **Dino Pew Pew**, after the repo `migosoft/dino-pew-pew` (see the naming gotcha).
 
-Earlier sessions: [Phase 9](#phase-9-tuning), [Phase 8](#phase-8), and older below.
+This document is for whoever picks the project up next. It covers the current state, the decisions that are still open, how the code fits together, and what to watch out for. How to play is in [README.md](../README.md). The design history is in [docs/superpowers/specs/](superpowers/specs/) and the implementation plans are in [docs/superpowers/plans/](superpowers/plans/). Older per-phase notes are in git history (`git log -- docs/HANDOFF.md`).
 
-This document gives the state of the project, how it fits together, and what to watch out for. For how to play and run it, see [README.md](../README.md). The design history is in [docs/superpowers/specs/](superpowers/specs/).
+## Start here
+1. **Open decisions** (the user hasn't ruled on these yet):
+   - **Camp balance.** A lone rider almost certainly can't take a camp with the current numbers. Crossing CROSSING takes about 2 minutes at Triceratops speed, and riders die to wild dinos on the way. A 400 HP tower takes about 8.5 s of a Triceratops's 47 DPS, while the tower deals 10 DPS back. A destroyed tower rebuilds in 90 s. In the browser, a full round (3 towers, then the building, the win banner and the restart) was only played to the end with HP lowered in a scratch copy of the server. Knobs: `CAMP` and `TOWER_GUN` in `src/sim/camp.ts`.
+   - **Brontosaurus strength.** With 220 HP and wide side arcs, it may be the strongest mount since its broadside damage went from 6 to 8. Watch it in play.
+   - **Wild raptors** are strong: riders crossing the map without shooting back died 2–3 times in tests (`HUNT_RANGE`, raptor `melee`, `wildTarget`).
+2. **Likely next task:** `docs/TASK-https-deploy.md` (untracked, written by the user) describes serving the game over HTTPS with Caddy and Let's Encrypt on an Oracle Cloud VM (`dino-pew-pew.duckdns.org`). The client already switches to `wss://` on HTTPS pages.
+3. **The Docker image on :8080 is stale.** It serves protocol 3, so a current client can't join it. Rebuild with `docker compose up --build -d` when the user wants it (see the port-mapping gotcha).
 
 ## What the game is
-A top-down pixel-art multiplayer shooter. Players ride armed dinosaurs on an 8192 px map and play in **rounds**: each team defends its own camp and tries to destroy the others'. The last camp standing wins.
-- **Setup:** the first player on an empty server picks 2, 3 or 4 teams and a map (RANDOM, or a fixed map for that team count; so far only CROSSING, 2 teams). Later players see the join screen: pick a team slot, then a mount. The env vars `TEAMS`/`MAP` preset the settings and lock them.
-- **Camps:** each team has a camp building (3000 HP) and 5 towers (400 HP) that shoot hostile riders and aggressive wild dinos. A force field blocks hits on the building while at least 3 towers stand. A destroyed tower rebuilds after 90 s.
-- **Rounds:** `waiting` (camps protected until every team has a rider) → `countdown` (5 s) → `playing` → `over` (15 s banner) → a fresh world with the same settings, everyone on their old team slot, money and upgrades reset. A team is out when its building falls or it has been empty for 30 s during play. Its riders can join a surviving team or spectate.
-- Your camp is no longer a safe zone: it is your respawn point, your shop, and heals you while its building stands.
-- Riderless **wild dinosaurs** (Triceratops, Velociraptor, Brontosaurus and T-Rex) roam the world. They are a threat, a source of money, and they leave carcasses that carnivores eat.
-- **Diets:** standing still next to the right food heals you.
-  - Herbivores eat bushes and ferns; only large herbivores also eat trees.
-  - Carnivores eat carcasses.
-- **Money and upgrades:** kills pay money, spent in your base camp on damage, range, fire rate and armor. You keep your money when you die but lose your upgrades.
-
-## Commit history (one commit per phase)
-| Commit | Phase |
-|---|---|
-| `7bfb5f3` | v1: single-player wave shooter (superseded) |
-| `61089fd` | 0: Node server and Docker image |
-| `29dfa2c` | 1: persistent multiplayer (teams, bases, respawn, protocol, join screen) |
-| `9cd2de4` | 2: Velociraptor, diets, feeding, carcasses |
-| `ffc799e` | 3: melee attacks and wild dinosaurs |
-| `6c9228c` | 4: money, upgrades, base camp shop |
-| `4efb5c5` | handoff document |
-| "Phase 5" | 5: dino-claw menu cursor, armored Triceratops with twin side cannons, `?preview` art sheet |
-| "Phase 6" | 6: armored Velociraptor with twin side guns, right-click abilities (raptor leap, triceratops dash) |
-| `a3fb0c0` | 7: 3072 px map, lakes and rivers, wading, Brontosaurus with weapons platform and tail whip, living water |
-| `01beb93` | 7a: Brontosaurus 1.5× bigger (`BRONTO_SCALE`), obstacle gap 48 px |
-| `a4cc299` | 7b: Brontosaurus neck and tail bend (chained links), stamped shadow that follows |
-| `fef0130` | 7c: chained, trailing tails for Triceratops and Velociraptor too |
-| `fde6dfe` | 8a: 4096 px map, larger wild population, raptor `wadeSpeed` 0.25 |
-| `8f04025` | 8b: river currents in the sim (flow field, `currentSlow`, `currentDrift`) |
-| `e4cbfa6` | 8c: river visuals (streaks downstream, drifting ripples, fish only in lakes) |
-| `e2c128c` | 8d: T-Rex sim (head and shoulder guns, bite ability, wild carnivore) |
-| `eb9d41e` | 8e: T-Rex art, bite animation and effect, carcass |
-| `74b2636` | README and handoff for Phase 8 |
-| `7030ea7` | 9a: Brontosaurus `broadsideGun` damage 6 → 8 |
-| `d4e3dcd` | 9b: smaller water splash where bullets land |
-| `8088c44` | 9c: heavier gait, stride length grows with body size |
-| `c744432` | 9d: T-Rex 1.2× bigger (`REX_SCALE`) |
-| `7e61066` | 9e: Brontosaurus carcass drawn at `BRONTO_SCALE` |
-| `27c0772` | 9f: leaner Brontosaurus body, neck, head and tail |
-| `bcb4d07` | handoff for Phase 9 |
-| `6115184` | 9g: T-Rex carcass at living size (`REX_CARCASS_SCALE`) |
-| `570c784` | handoff update, end of phase 9 |
-| `72fad3b` | perf: carcasses rot away (`CARCASS_DECAY_SECS`) |
-| `ca85b0b` | perf: protocol 3 (carcass deltas, players/teams only on change), WebSocket compression |
-| `8834437` | perf: shared dino grid (`spatial.ts`), id index for `findDino`, no `Set` per obstacle query |
-| `6ef8412` | perf: client culling, chain shadows redrawn only on change, snapshots decoded once |
-| `222c035` | handoff: performance pass and backlog |
-| `de1e561` | handoff: measured player capacity |
-| `3a0f621` | perf: food grid for `nearestFood`/`findFood`, `MAX_PLAYERS` 23 |
-| `49be2f2` | camp siege: design spec and implementation plan |
-| `433875c` | siege 1: 8192 px world, N-team camp layout, wildlife scaled by area |
-| `384ceed` | siege 2: map recipes and the CROSSING map |
-| `e2b6831` | siege 3: camp buildings and towers, pre-made teams |
-| `85a053b` | siege 4: structures are solid; riders spawn clear of them |
-| `64d0280` | siege 5: structures take damage, force field, camps no longer safe zones |
-| `7269549` | siege 6: melee and abilities damage enemy structures |
-| `456bbaa`, `caa897d` | siege 7: tower turrets and rebuilding |
-| `ee4ad61` | siege 8: healing aura in your own camp |
-| `798c2b5`, `3a6cead` | siege 9: round phases, elimination of empty teams, switching teams |
-| `462b87a` | siege 10: protocol 4 (structures, round, setup, switch) |
-| `8526584`, `0a63bc2` | siege 11: match setup, rounds and resets |
-| `8cc00a7` | siege 12: client setup screen, round restarts, eliminated panel |
-| `8830eb6`, `3cea236` | siege 13: ground drawn in chunks, obstacle and plant culling |
-| `576de03`, `d191c80` | siege 14: camp and tower art with damage stages |
-| `dc19cee`, `05c25ff` | siege 15: camps and towers in the game, force field and damage effects |
-| `8e033f8`, `a5cf7d2`, `69e4ec0` | siege 16: HUD for camps, rounds and spectating |
-| `44b2b2f` | siege 17: server tests wait on conditions instead of fixed sleeps |
-| (latest) | siege 17: docs and measurements |
-
-## Latest session: camp siege
-Spec: [docs/superpowers/specs/2026-10-05-camp-siege-design.md](superpowers/specs/2026-10-05-camp-siege-design.md). Plan: [docs/superpowers/plans/2026-10-05-camp-siege.md](superpowers/plans/2026-10-05-camp-siege.md). One commit (or a commit plus review fixes) per plan task; see the commit table.
-
-**What changed:**
-1. **8192 px world** (`DEFAULT_TILES` 512). Random maps place N camps (2: opposite corners, 3: a triangle around the centre, 4: the corners; `baseSlots`). `wildTarget(players, area)` scales the old population by `min(2.5, area / 4096²)`, so up to 275 wild dinos.
-2. **Setup and maps** (`src/sim/maps/`): round settings `{ teams, map }`, chosen by the first player (the setup steps in `JoinScene`) or preset and locked by `TEAMS`/`MAP`. Fixed maps are `MapRecipe`s. The first is **CROSSING** (2 teams, point-symmetric): a central lake with a shallow causeway on the camp diagonal, two rivers with two fords each, flank forests, rocks at the fords, and open ground around the camps. A fixed map always uses its own seed.
-3. **Camps and towers** (`camp.ts`, `systems/structures.ts`):
-   - `GameState.structures` holds each team's building and 5 towers. They are solid.
-   - They take damage from hostile riders' bullets, melee and every ability, never from wild dinos or their own team, and pay bounties.
-   - The force field blocks hits on the building while 3 or more towers stand.
-   - Towers aim and shoot (`TOWER_GUN`) at the nearest hostile rider or aggressive wild dino, and rebuild after 90 s unless the team is out.
-   - Camps are **no longer safe zones**. They keep the respawn point, the shop and a healing aura.
-4. **Rounds** (`rounds.ts`, `Match`): `waiting` → `countdown` → `playing` → `over` → a new round with the same settings. A team is eliminated when its building falls or after 30 s without players; its riders switch to a surviving team (`switch` message) or spectate.
-5. **Protocol 4:** `join.setup` and `switch`; `welcome` gains `map`, `teams` and `tiles`; snapshots carry `structures` and `round`; the lobby gains `setup`, `maps` and `phase`.
-6. **Client:**
-   - chunked ground (`GroundChunks`), and bucketed obstacles, canopies and plants (`BucketGrid`);
-   - camp and tower art with damage stages (`campArt.ts`, `/?preview=camp`);
-   - the force field, smoke, fire, crystal flicker and rebuild scaffold (`StructureViews`);
-   - the HUD camp strip, event feed and round banner (`Hud`, `hudModel.ts`);
-   - the eliminated panel and the free spectator camera.
-7. **Tests:** 117 → 183.
-   - The server tests now poll for conditions instead of sleeping a fixed 20–50 ms. Under CPU load they failed intermittently (`match.test.ts`: the buy, snapshot-count, switch and disconnect tests, and the 2 s `waitFor` limit).
-   - `hookTimeout` now matches `testTimeout` (20 s), because `maps.test.ts` builds the full CROSSING world in `beforeAll`, and under load that passed vitest's 10 s default.
-   - With both fixes, 7 full runs in a row passed while 28 busy threads loaded the 14 cores. Before them, 4 of 6 such runs failed.
-
-**Balance knobs:**
-- `CAMP` (`camp.ts`): `buildingHp` 3000, `towerHp` 400, `towers` 5, `towerRing` 170, `fieldMinTowers` 3, `towerRebuild` 90 s, `healPerSec` 8 after `healDelay` 3 s, `towerBounty` 60, `campBounty` 300, `towerTurnSpeed`, `towerAimTolerance`, and the spawn ring (`spawnMin`, `spawnMax`).
-- `TOWER_GUN` (`camp.ts`): 4 damage every 0.4 s, range 280.
-- `COUNTDOWN` (5 s) and `INTERMISSION` (15 s) in `rounds.ts`; `TEAM_EMPTY_TIMEOUT` (30 s) in `players.ts`.
-- `wildTarget` in `ecology.ts`.
-
-**Measured** (2026-10-05, this machine, headless Edge with software rendering):
-- **A full round over CDP.** Two Edge instances on `/?debug`, server started with `TEAMS=2 MAP=crossing`.
-  - A (team GREEN, Triceratops) ran an autopilot to RED's camp over the causeway. B (team RED, Triceratops) stayed idle in its camp.
-  - A destroyed 3 towers (the field dropped), then the building. Both clients showed `TEAM GREEN WINS` / `NEXT ROUND IN 14`. A had $480 (3 × 60 + 300).
-  - **The building and tower HP were lowered in a scratch copy of the server** (building 300, towers 100). The repo values were not changed. The real values were not tried to the end in the browser; by the numbers, a lone Triceratops can't take a camp with them:
-    - one way across CROSSING takes about 2 minutes at its 72 px/s, and longer after deaths to wild dinos on the way (that happened several times in both runs);
-    - a 400 HP tower takes about 8.5 s of its 47 DPS, while the tower's 10 DPS works on its 100 HP;
-    - a destroyed tower is back after 90 s.
-
-    Taking a camp is a team job. Watch it in real play.
-  - **Round restart**, from raw socket arrival times on both clients: the first snapshot with `over` → the next `welcome` took **15.6 s** (the 15 s intermission plus building the new world on the server). The client then rebuilt the scene and placed the camera within 0.9 s.
-  - Both players came back on their old teams (GREEN, RED) with the same mount, **money 0** and K/D 0. The new round's countdown started at once (both teams had a rider).
-  - The whole round was run twice; both runs ended the same way.
-- **Frame time** (CPU between Phaser's `prestep` and `postrender`; one Edge instance, one rider driving for 90 s):
-  - CROSSING: mean **3.0 ms**, p95 3.9 ms, p99 5.9 ms, max 11.9 ms, 60 fps.
-  - RANDOM 8192 (seed 7, 2 teams, partly through a lake): mean **3.3 ms**, p95 4.4 ms, p99 10.4 ms, max 15.6 ms, 60 fps.
-  - During the full-round runs (two Edge instances, Vite and the server on the same machine; about 10 minutes and 38,000 frames): mean 5.3 ms, p95 9.5 ms, p99 13–17 ms, and single spikes of 130–190 ms that were not traced.
-  - For comparison: Task 13 measured 6.9 ms mean and p99 28 ms right after the ground chunks landed, and the performance pass 9.5 ms on the 4096 px map.
-- **Setup flow** (server without a preset):
-  - Tab 1 got the setup screen (`HOW MANY TEAMS?`, then `CHOOSE A MAP`, which offers only RANDOM for 3 teams) and chose 3 teams on RANDOM.
-  - Tab 2 went straight to `CHOOSE YOUR TEAM`, listing GREEN, RED and GOLD with `MAP: RANDOM  TEAMS: 3`.
-  - After both tabs closed, the lobby reported `setup: null`, and a new tab got the setup screen again.
-- **Server benchmark.** The real `Match` with fake sockets: bots join with `join` messages and send inputs, and every snapshot is serialized. 4 simulated minutes per row. Bots drive at the nearest enemy dino or structure and fire nonstop; wildlife is on. Compressed size is `deflateRaw` at level 3 per snapshot with no shared context, so it is a little above what `perMessageDeflate` sends.
-
-  | Setup | Wild (avg) | Dinos alive | Bullets | Tick mean / p99 | Snapshot raw | Compressed mean / max |
-  |---|---|---|---|---|---|---|
-  | 16 bots, 2 teams, CROSSING | 73 | 89 | 71 | 1.17 / 3.0 ms | 9.6 KB | 2.9 / 4.1 KB |
-  | 16 bots, 4 teams, RANDOM 8192 | 75 | 91 | 72 | 1.25 / 3.1 ms | 10.3 KB | 3.2 / 4.4 KB |
-  | 16 bots, 2 teams, CROSSING, wildlife filled to its target (270) | 152 | 168 | 71 | 1.06 / 2.3 ms | 18.5 KB | 5.3 / 8.1 KB |
-  | 16 bots, 4 teams, RANDOM 8192, wildlife filled | 149 | 165 | 69 | 1.20 / 2.6 ms | 19.0 KB | 5.5 / 8.1 KB |
-
-  - A fresh round starts with 70 wild dinos (`populateWild` runs before anyone joins). The population then grows by one every 2 s toward `wildTarget` while riders kill them. The "filled" rows stand for a server that has run long enough to reach the target: the snapshots double, and the tick barely moves.
-  - The tick is far below the 8 ms threshold, so `updateStructures` and `wildTarget` needed no work.
-  - With the wild population full, each player needs about twice the bandwidth of the [Capacity](#capacity-measured-2026-10-05) table. Area-of-interest culling (backlog) is the fix if that matters.
-  - Building a new 8192 px world on the server takes 0.3–0.8 s and blocks the tick loop once per round.
-
-**How it was checked:** the CDP drivers lived in the session scratchpad and were not committed. They follow the recipe under **Browser testing**.
-- The siege autopilot read the enemy structures from `scene.net.mirror.structuresAt(...)`. It drove straight at the nearest standing tower (at the building once two towers were left), stopped 230 px out, turned to face it and fired. When stuck, it reversed and turned.
-- The scene restarts on a new round, which replaces `scene.playerInput`, so the autopilot has to be installed again after each `welcome`.
-- To time the round restart, listen on `scene.net.ws` with `addEventListener('message')`. The page's own timers are blocked while the client rebuilds the world.
-
-**Still open** (deferred as minor in the reviews):
-- The force-field dome is faint on grass.
-- "YOUR CAMP HAS FALLEN" shows through the semi-transparent eliminated panel.
-- Per-frame allocations in `StructureViews` and `GroundChunks`.
-
-## Performance pass (2026-10-05)
-**What changed:**
-1. **Carcasses rot away** in `CARCASS_DECAY_SECS` (120 s, `feeding.ts`), including the old carcasses placed at world creation. This is a small gameplay change: before, a carcass stayed until it was eaten, so over a 20-minute match about 700 piled up. Each snapshot carried every one of them, and the food scans got slower.
-2. **Protocol 3** (`protocol.ts`, `match.ts`):
-   - `welcome` carries all carcasses. Each snapshot then carries only new or changed ones (`carcasses`) and the ids of gone ones (`gone`). `Match.sentCarcasses` holds what was last sent; the client applies the changes in `FoodView.upsertCarcasses`/`removeCarcasses`.
-   - `players` and `teams` are left out of a snapshot while unchanged. `Mirror` keeps the last ones received. `respawn` is sent in whole seconds, so the list changes once a second while someone waits. Any join forces a full resend.
-   - `perMessageDeflate` is on in `http.ts` (threshold 1 KB, level 3).
-3. **Shared dino grid** (`src/sim/spatial.ts`): `buildDinoGrid` (128 px cells) is rebuilt before each pass, and `dinosNear` returns candidate indices **in `state.dinos` order**, so ties and first-hit rules come out the same. Used by melee, dino contacts, projectile hits, `findPrey` and `wantsWhip`.
-   - Queries widen their radius by `SLACK` (48 px) for dinos that moved since the build.
-   - If the array, its length or the tick changed since the build, a query falls back to every dino.
-   - `findDino` uses an id index (`world.ts`). After compacting `state.dinos` in place, call `forgetDinoIndex`.
-   - `forEachObstacleNear` dedupes with visit stamps instead of a new `Set` per call.
-4. **Client** (`DinoView.ts`, `Mirror.ts`, `Effects.ts`, `WorldView.ts`, `Hud.ts`):
-   - Dinos more than `CULL_MARGIN` (200 px) outside the camera are hidden and skip their update.
-   - The stamped chain shadow (a RenderTexture) is redrawn only when a stamp's frame or offset changes (`ChainParts.drawn`).
-   - `Mirror.dinosAt` interpolates into **reused objects**, one per dino id. Read them during the frame; don't keep them, except per id as `DinoView.lastView` does.
-   - Scorch marks are a ring of 64 reused images.
-   - Canopy alpha snaps to its target, and the HUD overlay skips off-screen dinos.
-
-**Measured:**
-- **Sim** (16 bot riders plus wildlife, 6 simulated minutes): a tick went from about 3.7–4.2 ms to about 2.1 ms. The end state was identical before and after the grid change. A typical snapshot is about 8 KB (2.5 KB compressed); before, it was 18 KB and growing.
-- **Client** (headless Edge with software rendering, one rider, seed 7): CPU per frame went from about 36 ms (25 fps) to about 9.5 ms (60 fps). The frame time was measured between Phaser's `prestep` and `postrender` game events. On a real GPU the gain will be different.
-
-## Phase 9 (tuning)
-**What was done** (small tuning requests, one commit each):
-1. **Brontosaurus broadside guns:** `broadsideGun` damage 6 → 8 (`weapons.ts`). One side now does about 46 DPS, close to the Triceratops (about 47); a side arc plus the rear gun, where they overlap, about 66. The T-Rex is about 72 with all four guns on target.
-2. **Bullet splash in water:** spent bolts call `splash(x, y, 3, 2)` in `GameScene` (it was size 6 with 6 droplets). `WaterView.splash` takes an optional droplet count; the other splashes (dash, leap, whip, bite) are unchanged.
-3. **Heavier gait** (`DinoView.ts`): the leg pose changes every `strideLen(radius)` px, which is `STRIDE_PER_POSE · (radius / STRIDE_RADIUS)^0.75`. That gives Velociraptor 7 (unchanged), Triceratops about 10, T-Rex about 14 and Brontosaurus about 16. The walking tail sway uses the same stride, so it stays in step. Footstep rings in water (`WaterView.trackDinos`) still use their own step length, `radius · 0.9`.
-4. **T-Rex 1.2× bigger:** `REX_SCALE` in `trexArt.ts` works like `BRONTO_SCALE`: canvas sizes `2 · r(28)` and `2 · r(22)` (kept even so the pivot stays on the pixel grid), every coordinate scaled, 1 px details kept at 1 px, gun sprites unscaled. In `dinos.ts`: radius 15 → 18, head (17, 0), tail (−13, 0), seat (11, 0), head guns (5, ±10), shoulder guns (5, ±16). **Keep the two in step** when resizing.
-5. **Brontosaurus carcass at living size:** `drawBrontosaurusCarcass` (`foodArt.ts`) is laid out in design pixels and drawn at `BRONTO_SCALE` through `X`/`Y`/`thick` helpers. It is about 140 px long, against about 146 px for the living animal (it was 92 px).
-6. **Leaner Brontosaurus** (`brontosaurusArt.ts`): torso half-width 12.5 → 10.2 design px (same length), shoulders 5.6 × 5.8, legs at ±9/±9.5 with slightly smaller feet, neck root 4.0 (tip 2.2), tail root 5.0, a narrower head. The platform and gun mounts did not move, so the pods hang a little further past the flanks. The hitbox radius stays 22.
-7. **T-Rex carcass at living size:** `drawTrexCarcass` uses the same `X`/`Y`/`thick` helpers at `REX_CARCASS_SCALE` (`REX_SCALE · 1.45`, because its layout was shorter than the living art). It is about 92 px long, against about 89 px for the living T-Rex (it was 52 px). The Triceratops (about 50 vs 45 px) and Velociraptor (about 29 vs 35 px) carcasses were measured and are close enough, so they were left alone.
-
-**Still open:**
-- **Balance after 9a:** with 220 HP and wide side arcs, the Brontosaurus may now be the strongest mount. Watch it in play.
-
-**How the art was checked:** a throwaway page in the project root (`_artcheck.html`, deleted afterwards) imported the draw functions from `/src/...` through the Vite dev server. It and `/?preview=<kind>&zoom=2&focus=row,col` were captured with `chrome.exe --headless=new --virtual-time-budget=6000 --screenshot=...`. For before/after shots, `git stash` the change, shoot, then `git stash pop`.
-
-## Phase 8
-**What was done** (the user supplied a Dino Riders T-Rex image, the cover of a French *Pif* magazine):
-1. **Map 4096 px** (`DEFAULT_TILES = 256`). It is still one ground texture: 4096 is the safe single-texture limit, so going bigger needs the ground split into chunk textures (`WorldView`/`drawGround`).
-   - `generateWorld` takes about 120–170 ms in Node (it was about 100 ms at 3072 px).
-   - `wildTarget` is now `min(110, 28 + 5·players)`.
-2. **Velociraptor `wadeSpeed` 0.25** (it was 0.4).
-3. **River currents** (sim):
-   - `waterLayer` (`worldgen.ts`) also returns a flow field, `World.flow`: a `Float32Array` holding (vx, vy) per tile in px/s, `null` with `water: false`.
-     - **Direction:** the river noise gradient turned 90°. A river is the 0.5 contour of that noise, so each river flows one way along its whole length.
-     - **Speed:** `RIVER_SPEED` (36 px/s) in the middle of the channel. It fades toward the banks and drops to 60% over fords.
-     - **No current** in lakes (where a river meets a lake, the lake wins) or within `BASE_DRY` of a camp. Rivers cover about 12% of the map.
-   - **Lookups** in `world.ts`: `flowAt` and `isRiver` use `tileIndexAt` (the same wobbled borders as `tileAt`).
-   - **Per-species fields on `DinoDef`:**
-     - `currentSlow`: the top-speed factor in a river (default 0.75). Triceratops and Brontosaurus 1, T-Rex 0.8, raptor 0.6.
-     - `currentDrift`: the share of the flow added to the position each tick (default 0). Raptor 0.8.
-   - **Movement:** `terrainSpeedFactor` multiplies the wade factor by the current factor, so the dash and the bite lunge slow down in rivers too. `applyCurrent` (`movement.ts`) runs every tick in `sim.ts` and is skipped mid-leap.
-   - **AI and spawning:** calm wild dinos with `currentDrift` (raptors) steer around rivers (`clearHeading`). Wild dinos never spawn in rivers. In a 2-minute headless run, wild raptors spent 0.1% of their time in rivers.
-4. **River visuals** (`WaterView.ts`):
-   - Wave points in a river become **streaks** (`current_<v>_<deep|shallow>`, `drawCurrentStreak` in `waterArt.ts`). Each one runs `STREAK_RUN` px downstream at 1.3× the current, fades in and out, then starts over. A streak that would run onto the bank isn't drawn.
-   - Ripples drift with the current.
-   - Fish live only in still deep water (lakes).
-5. **T-Rex** (`trex` in `dinos.ts`):
-   - **Stats:** carnivore, radius 15 (18 since phase 9d, with all T-Rex sizes scaled by `REX_SCALE`), 170 HP, speed 66, bounty 35, `wadeSpeed` 0.75.
-   - **Size:** its art is about 55% as long (about 60% since phase 9d) as the Brontosaurus's (real animals: 12 m vs 22 m).
-   - **Guns:**
-     - `headGunL`/`headGunR`: parent `head`, at (4, ±8), the two ends of the barrel across the head harness. Weapon `rexHeadGun`: 4 damage every 0.22 s.
-     - `shoulderGunL`/`shoulderGunR`: parent `body`, at (4, ±13). Weapon `rexShoulderCannon`: 8 damage every 0.45 s.
-     - Default fire mode: each gun fires when it is on target.
-   - **Bite** (`kind: 'bite'` in `abilities.ts`):
-     - For the first half of its 0.35 s it lunges forward at 140 px/s (scaled by the terrain) and controls the movement.
-     - At the half-way point the jaws close on the **one** nearest hostile in front (±35°, within `head.offset.x` + its radius + `hitReach` 14): 55 damage and a 10 px shove. Dinos in their own camp and airborne dinos are exempt.
-     - It emits a `bite` event `{ dinoId, targetId | null, x, y }`. Events go to the client as JSON, so the protocol needed no change.
-     - Wild T-Rexes bite targets they hunt (`wantsAbility`, `BITE_ABILITY_ARC`).
-   - **Wild:** 1 in 4 wild carnivores (`CARNIVORES` in `ecology.ts`), and about 12% of the initial carcasses.
-   - **Art** (`textures/trexArt.ts`), following the box art:
-     - mottled hide, red eyes;
-     - head harness with the barrel across the head and a red power cell;
-     - vented grey shoulder frames carrying red cannon pods;
-     - a chest platform with a ladder, shin plates, and the saddle on the neck (`seat` (9, 0)).
-     - The tail is `REX_TAIL` (6 links) in `CHAINS`, so it bends and trails, and the shadow is stamped from masks.
-   - **Bite animation:** the head pushes forward up to `BITE_REACH` (5 px) and shows the open-jaw frame `trex_headBite_<palette>` (`DinoView`). `Effects.bite` shows sparks and blood that fade out, or dust on a miss. The camera shakes when you are the one bitten.
-   - **Elsewhere:** the HUD shows `BITE READY`/`BITE IN 12`; the join screen lists it as `T-REX`; `drawTrexCarcass` is in `foodArt.ts`.
-6. **Tests:**
-   - `tests/sim/river.test.ts` covers the flow field (deterministic, only in rivers, one way along a river), drift and slowdown per species, and no drift mid-leap.
-   - `tests/sim/trex.test.ts` covers the guns, the bite (single target, front only, cooldown, camp immunity), water and river speed, and wild spawning.
-   - The vitest `testTimeout` is now 20 s (`vite.config.ts`), because several tests generate the full 4096 px map more than once. The suite runs in 3 s on an idle machine and 13 s or more under load.
-7. **Verification:**
-   - Art at `/?preview=trex`, compared at the same zoom with `/?preview=brontosaurus`.
-   - In the game over CDP (driver in the session scratchpad, not committed), seed 777:
-     - A raptor idling in a 25–30 px/s current drifted at 21–24 px/s, and at full throttle in a deep river made 17.7 px/s (118 × 0.25 × 0.6).
-     - A T-Rex in a deep river made about 41 px/s, against an expected 39.6.
-     - All four guns fired; the bite splashed and the HUD went to `BITE IN 15`.
-   - **Frame rate:** headless Edge showed 38–45 fps here, about the same as the previous commit measured the same way (36–54). The machine was under load, so this is not a 60 fps figure. The water rendering takes under 1 ms per frame.
-
-**Balance knobs (phase 8):**
-- `RIVER_SPEED` and the river widths (`RIVER_DEEP`, `RIVER_WIDE`) in `worldgen.ts`.
-- `currentSlow`, `currentDrift` and `wadeSpeed` per species.
-- The T-Rex `ability`, plus the `rexHeadGun` and `rexShoulderCannon` weapons.
-- `CARNIVORES` (T-Rex share) and `wildTarget` in `ecology.ts`.
-
-## Phase 7 and follow-ups
-**What was done** (the user supplied a Dino Riders box image of an armored Brontosaurus). Phase 7 is described first, then the follow-ups (7a–7c) in item 8.
-1. **Bigger map with water.**
-   - The default map is now 192×192 tiles = **3072 px** (`DEFAULT_TILES` in `worldgen.ts`). Base camps sit at about 1/8 of the map from the edge (`baseInset`, at least 260 px, so small test maps are unchanged).
-   - New tiles `Tile.Shallow` and `Tile.Deep`, made by `waterLayer`:
-     - **Lakes** are cut from a slow noise at percentiles (`LAKE_DEEP_SHARE`, `LAKE_SHALLOW_SHARE`), so every seed gets about the same amount of lake.
-     - **Rivers** follow a contour line of a warped noise. **Fords** break up their deep core.
-     - About 25% of each map is water. Everything within `BASE_DRY` of a camp is dry.
-   - **`tileAt(world, x, y)`** (`world.ts`) is the one terrain lookup, with the organic border wobble. The ground texture (`drawGround`) uses it too, so the shoreline you see is the one the sim uses. Use `isWater` / `isDeepWater` rather than indexing `world.tiles` directly.
-   - **Obstacles are spread out:** the scatter cell is 56, and any two obstacles are at least `OBSTACLE_GAP` (48 px) apart, wide enough for the Brontosaurus. Nothing (rocks, trees, plants, carcasses) is placed in water.
-   - `WorldGenOptions.water: false` turns water off. The ability and Brontosaurus tests use it for dry arenas.
-2. **Wading.**
-   - `moveDino` takes a `speedCap`. `sim.ts` passes `terrainSpeedFactor`: `wadeSpeed` in deep water (default 0.6), 1 elsewhere.
-   - Per species: raptor 0.4, triceratops 0.7, brontosaurus 0.9. Shallow water has no effect, and the speed above the cap bleeds off at `decel`.
-   - A dash is scaled the same way. A leap is airborne and ignores water.
-   - Calm wild dinos (wander, graze) steer around deep water (`clearHeading` in `ai.ts`). In a 2-minute headless run they spent 0.1% of their time in deep water, which covers 10% of the map.
-3. **Brontosaurus** (`dinos.ts`): 220 HP, speed 50, radius 22, bounty 40, a wild herbivore 1 time in 4. Its art is drawn at `BRONTO_SCALE` (1.5) in `brontosaurusArt.ts`, and the sizes in `dinos.ts` (radius, head, tail, seat, mounts, whip reach) use the same factor, so change them together.
-   - The neck, head and tail are drawn as chains of links that bend (see item 8). `HeadDef.under` keeps the neck below the body.
-   - **`seat`** puts the rider sprite in the cockpit dome.
-   - **Weapons platform:** four `broadsideGun` mounts (±90°, two per flank) and a rear `tailGun` (180°).
-     - **`fireMode: 'side'`**: `selectSideMounts` (`aiming.ts`) fires every mount whose arc holds the cursor. Cursor on the left: the left pair fires; behind: the tail gun; straight ahead: nothing.
-     - `ArcIndicator` dims the wedges that are not live.
-   - **Tail whip** (`kind: 'whip'`): the dino keeps walking while it runs. At half-way it hits each hostile within ±80° of the tail direction once: 22 damage and a 20 px shove, camp immunity as for the dash. It emits a `whip` event.
-     - Wild Brontosaurs whip at hostiles right behind them (`wantsWhip` in `ai.ts`, checked on top of whatever `decide` returned).
-4. **Living water** (`src/client/render/WaterView.ts`), all client-side:
-   - Wave crests are pre-scattered over the water in 96 px cells, and only the visible cells are drawn from a sprite pool.
-   - Fish shadows live in deep water near the camera. Their number scales with how much deep water is in view. They turn back at the edge of deep water and dart away from dinos and fresh ripples.
-   - Ripples: one per footstep (alternating feet, sized by radius), a V wake behind dinos moving through deep water, slow rings around dinos standing in it.
-   - Splashes for leap landings, dashes and whips in water, and for bolts that run out of range over water (`Mirror.takeSpent`).
-   - `DinoView.update(d, wading)` hides the shadow in deep water (fainter in the shallows) and shows a foam ring.
-5. **Sprite sheets** (`rotationStrip`) now wrap into rows at 4096 px, because the Brontosaurus frames would make a single strip too wide for some GPUs.
-6. **Tests:** `tests/sim/water.test.ts` covers wade speeds, the gradual slowdown, water coverage, dry camps and nothing in water. `tests/sim/brontosaurus.test.ts` covers side fire, the whip and wild whips. `world.test.ts` covers the map size and obstacle gap.
-7. **Verification:**
-   - The art was reviewed with `/?preview=brontosaurus`. `PreviewScene` cells now scale with the species' radius.
-   - The game was driven over CDP: a Brontosaurus wading into a lake, firing its left pods and whipping; a raptor in the shallows. Frame rate stayed at 60 fps.
-   - `drawGround` for 3072 px takes about 1.3 s in headless Edge.
-8. **Follow-ups (7a–7c), client-side art and animation only:**
-   - **7a: bigger Brontosaurus.** Its art is laid out in design pixels and drawn at `BRONTO_SCALE` (1.5) in `brontosaurusArt.ts`, so it is redrawn rather than upscaled. The sizes in `dinos.ts` use the same factor: radius 22, `head.offset` 18, `tail.offset` −19, seat, mounts (±20 px on the flanks, rear gun at −22), whip `hitReach` 32. Change them together. `OBSTACLE_GAP` grew to 48 px (more than its 44 px diameter).
-   - **7b–7c: bending necks and tails** (`src/client/render/chains.ts`, drawn by `DinoView.updateChain`):
-     - `CHAINS` lists the species with chained parts. The Brontosaurus has a neck of 5 links plus the head, and a tail of 7. The Triceratops tail has 3 links and the Velociraptor tail 4; their heads are placed as before. Body sprites of chained species no longer include a tail.
-     - **Neck:** it starts at `head.offset`. The head yaw is spread over the links, so the neck curves toward where the head looks.
-     - **Tail:** it starts at `TailDef.offset` (now set for all three species).
-       - **Follow-through:** each link eases toward the direction of the link before it (`TRAIL_RATE` = 20/s), so a turning dino's tail swings round behind it, tip last. The state is per `DinoView` (`trail`), timed with `performance.now()`.
-       - On top of that, a walking sway travels down the tail as a wave (`TAIL_SWAY`, `SWAY_WAVE`), and the whip swings it with a lag toward the tip (`WHIP_SWING`, `WHIP_LAG`).
-       - Mid-leap the tail rises and spreads with the body.
-     - **Links** are capsule sprites centered on their joint (`drawChainSegment` in `textures/chainArt.ts`, markings per species via `ChainStyle`: neck bands, spine spots, raptor stripes and feather crest). `taperedChain` builds a tapering list of links. A link's back cap has no outline and each link draws over the one before it, so the joints don't show.
-     - **Shadow:** chained species have no `<kind>_shadow_<pose>` texture. Opaque masks (`<kind>_bodyMask_<pose>`, `<kind>_head_mask`, `<kind>_neck<i>_mask`, `<kind>_tail<i>_mask`) are stamped into one `RenderTexture` per dino each frame and shown at shadow strength. It follows every bend, doesn't darken where pieces overlap, shrinks mid-leap and hides in deep water.
-     - `/?preview=brontosaurus&yaw=0.7&whip=0.3` turns every head and freezes a whip. The follow-through only shows in motion.
-     - **The sim is unchanged:** `head.offset` is still the neck pivot, aiming uses the body mounts, and collision is one circle.
-   - **Mouth position:** `geometry(d).mouth` puts the eating effect at the end of a chained neck. Feeding in the sim still measures from the body, so a Brontosaurus's leaves can pop up a bit away from the bush.
-
-**Balance knobs:**
-- `wadeSpeed` per species.
-- `LAKE_*_SHARE` and the river widths in `waterLayer`.
-- `OBSTACLE_GAP`.
-- The Brontosaurus `ability` and `broadsideGun`/`tailGun` values.
-- `wildTarget` in `ecology.ts` (now `min(70, 18 + 4·players)`).
-
-## Phase 6
-**What was done** (based on a second Dino Riders box image the user supplied: a Deinonychus ridden by Antor):
-1. **Armored Velociraptor.**
-   - Ridden raptors wear a small riveted metal saddle with team-color trim and struts to both flanks (`drawRaptorSaddleArmor`), plus a silver face mask with a grille (`drawRaptorHeadArmor`). Wild raptors are unarmored.
-   - The head-mounted dart launcher was **removed**. A small gun (`drawRaptorSideGun`, with a red power cell) now hangs on each flank.
-   - Mounts `sideGunL` and `sideGunR`: parent `body`, offset `(1, ±8)`, `arcHalf` 25°, muzzle 8, `volley: true`.
-   - The weapon `raptorSideGun` does 3 damage every 0.26 s. Two guns give about 23 DPS, the same as the old dart.
-   - The gunmetal colors (`METAL*`, `RIVET`) are now exported from `dinoArt.ts` and shared.
-2. **Abilities on right click, with a 15 s cooldown** (`DinoDef.ability`, code in `src/sim/systems/abilities.ts`).
-   - **Velociraptor leap** (`kind: 'leap'`): it jumps toward the aim point, 30–110 px away, in 0.45 s.
-     - While airborne (`isAirborne` in `world.ts`), it skips rock push-out, dino contact and melee, both as attacker and as target. Projectiles still hit it.
-     - On landing it deals 18 damage to every hostile within its radius + their radius + 8 px.
-   - **Triceratops dash** (`kind: 'dash'`): 0.4 s at 260 px/s along its heading, which ignores steering.
-     - It deals 20 damage once to each hostile it touches in front of it (±70°) and shoves it 12 px. Dinos in their own base camp are neither hurt nor shoved.
-     - A head-on rock ends the dash early.
-   - The rider can still aim and fire during either ability.
-   - **Wild dinos** use their ability on a target they are hunting or charging, when it is in range and ahead. Each tick has a 1.5% chance, about once a second on average, and the same 15 s cooldown applies (`wantsAbility` in `ai.ts`).
-3. **Protocol.**
-   - `InputCommand.ability` (optional) is sent as `ab: 0|1`.
-   - `DinoTuple` has two new trailing fields: `abilityPhase` (0, or a progress of 1..1000) and `abilityCd` (tenths of a second).
-   - New events: `ability` (take-off dust) and `slam` (leap landing: dust ring, sparks, shake). Dash hits reuse the `melee` event.
-4. **Client.**
-   - Mid-leap, `DinoView` raises every part by up to 10 px, scales it up to 1.15× (the part offsets too) and draws it above the y-sort. The shadow stays on the ground and shrinks.
-   - Dashing dinos leave a dust trail (`GameScene`).
-   - The HUD stats show `JUMP READY`/`JUMP IN 12` (or `DASH …`). Write it as `IN 12`, because `12S` reads as `125` in the 5x7 font.
-   - The join screen and the README list the new control.
-5. **Tests.**
-   - `tests/sim/raptor.test.ts` covers the volley.
-   - `tests/sim/abilities.test.ts` covers:
-     - leap range, landing damage and friendly fire;
-     - passing over dinos;
-     - the cooldown, and base immunity;
-     - dash distance, single hit and the rock stop;
-     - wild dinos using abilities occasionally.
-   - `tests/net/protocol.test.ts` covers the new input and tuple fields round-trip.
-6. **Verification.** The art was reviewed with `?preview=velociraptor`. The game was driven with the CDP approach under Browser testing: two bolts per shot, a leap, a dash with its dust trail, and the HUD cooldown. The driver script was not committed.
-
-**Balance knobs:**
-- The `ability` entries in `dinos.ts`: damage, range, speed, cooldown.
-- `ABILITY_CHANCE` and the range/arc checks in `wantsAbility` (`ai.ts`).
-- `DASH_ARC` and `DASH_KNOCKBACK` in `abilities.ts`.
-
-## Phase 5
-- **Dino-claw menu cursor.**
-  - `JoinScene` sets the default cursor; `GameScene.create` resets it to `'none'`, because the cursor is global across scenes.
-  - The art is `drawClawCursor` (`worldArt.ts`), and the CSS value comes from `src/client/cursor.ts`.
-- **Armored Triceratops** from the user's box art:
-  - a howdah (`drawTriceratopsSaddleArmor`) and head armor;
-  - two flank cannons (`sideCannonL`/`sideCannonR`, `sideCannon`: 7 damage every 0.30 s) firing as a `volley`;
-  - the horn cannon was removed;
-  - the armor is cosmetic only.
-- **Art preview page** `/?preview` (`PreviewScene`): every palette × 8 headings. Options: `?preview=velociraptor`, `&zoom=4&focus=row,col`.
-- **Process that worked well:**
-  1. Plan first.
-  2. Iterate the art with `?preview` screenshots before wiring up the sim.
-  3. Check in the game at the end.
+A top-down pixel-art multiplayer shooter. Players ride armed dinosaurs on an 8192 px map and play in **rounds**: each team defends its camp and tries to destroy the others'. The last camp standing wins.
+- **Setup:** the first player on an empty server picks 2, 3 or 4 teams and a map: RANDOM, or a fixed map for that team count (so far only **CROSSING**, 2 teams). Later players pick a team slot, then a mount. The env vars `TEAMS`/`MAP` preset the settings and lock them.
+- **Camps:** each team has a building (3000 HP) and 5 towers (400 HP). The towers shoot hostile riders and aggressive wild dinos. A force field blocks hits on the building while at least 3 towers stand. A destroyed tower rebuilds after 90 s unless its team is out.
+- **Rounds:** `waiting` (camps can't be damaged until every team has a rider) → `countdown` (5 s) → `playing` → `over` (15 s banner) → a fresh world with the same settings. Everyone keeps their team slot, mount and name; money, upgrades and K/D reset. A team is out when its building falls, or when it has been empty for 30 s during play. Its riders can join a surviving team or spectate.
+- **Your camp** is your respawn point and shop, and it heals you while its building stands. It is not a safe zone.
+- **Mounts:** Triceratops (dash), Velociraptor (leap), Brontosaurus (tail whip, side-firing platform), T-Rex (bite). Right click uses the ability (15 s cooldown).
+- **Wild dinosaurs** of all four species roam the world. They are a threat and a source of money, and they leave carcasses.
+- **Diets:** standing still next to the right food heals you. Herbivores eat bushes and ferns, only large herbivores also eat trees, and carnivores eat carcasses. Carcasses rot after 120 s.
+- **Water:** lakes and rivers. Deep water slows you (`wadeSpeed`), and rivers have currents that push light dinos (`currentDrift`).
+- **Money and upgrades:** kills pay money, which you spend in your camp on damage, range, fire rate and armor. You keep money when you die but lose upgrades.
 
 ## Architecture
 ```
 src/sim/     authoritative game logic: pure TS, no Phaser, deterministic (seeded RNG, fixed 60 Hz step)
              maps/ (fixed map recipes), camp.ts + systems/structures.ts (camps, towers), rounds.ts (phases)
-src/net/     protocol.ts: message types, validation of client input, compact snapshot encoding
-src/server/  http.ts (static files + /api + /ws upgrade), match.ts (game loop, sessions), main.ts
-src/client/  Phaser 3 browser client: join screen, interpolated rendering, HUD, procedural art
-tests/       vitest: sim/, net/, server/ (the server tests open real WebSockets on port 0)
+src/net/     protocol.ts: message types, validation of client input, compact snapshot encoding (protocol 4)
+src/server/  http.ts (static files + /api + /ws upgrade), match.ts (game loop, sessions, rounds), main.ts
+src/client/  Phaser 3 browser client: join/setup screen, interpolated rendering, HUD, procedural pixel art
+tests/       vitest: sim/, net/, server/ (real WebSockets on port 0), client/ (pure HUD logic only)
 ```
 **Server:**
-- `Match` hosts one round after another. It holds `settings` (`{ teams, map }`, or null until the first player sets up) and `state`. **`Match.state` is null** while the server has no settings (an empty, unlocked server): code that touches it must check. The first valid `join` with a `setup` builds the world (`startRound`); when the last player leaves an unlocked server, `settings` and `state` go back to null.
-- When a round's `over` timer runs out, `nextRound` builds a fresh `GameState` (same settings; RANDOM gets a new seed, a fixed map always uses its own) and re-adds every connected player to the same team slot with the same mount and name. Each client gets a new `welcome` and `GameScene` restarts itself on the same connection.
-- `Match` calls `step(state, inputsByPlayerId, DT)` at 60 Hz.
-- Every 3rd tick it broadcasts a snapshot, 20 per second. A snapshot holds:
-  - dino tuples (every live dino);
+- `Match` hosts one round after another. It holds `settings` (`{ teams, map }`) and `state`.
+  - **`Match.state` is null** while an unlocked server has no settings. Code that touches it must check.
+  - The first valid `join` that carries a `setup` builds the world (`startRound`). When the last player leaves an unlocked server, both go back to null.
+- When the `over` timer runs out, `nextRound` builds a fresh `GameState` (RANDOM gets a new seed; a fixed map always uses its own) and re-adds every connected player. Each client gets a new `welcome`, and `GameScene` restarts itself on the same connection. Building an 8192 px world takes 0.3–0.8 s and blocks the tick loop once per round.
+- `Match` calls `step(state, inputsByPlayerId, DT)` at 60 Hz. Every 3rd tick (20/s) it broadcasts a snapshot holding:
+  - every live dino;
   - players and teams, left out while unchanged;
-  - events stamped with their tick;
-  - carcasses that appeared or changed, plus `gone` ids;
-  - the plant food levels that changed since the last snapshot;
-  - every structure (camp buildings and towers, as tuples), and the round (`{ phase, timer, winner }`), left out while unchanged.
-- The `welcome` message carries all carcasses and every plant that isn't full, plus `map`, `teams` and `tiles` so the client can call `worldOptionsFor` and regenerate the same world.
+  - events, stamped with their tick;
+  - carcass changes plus `gone` ids, and plant levels that changed;
+  - every structure;
+  - the round (`{ phase, timer, winner }`), left out while unchanged.
+- `welcome` carries all carcasses, every plant that isn't full, and `map`, `teams` and `tiles`, so the client can call `worldOptionsFor` and regenerate the same world.
 
 **Client:**
-- It never runs the sim. It regenerates the terrain from the world seed and map settings it gets in `welcome`. The 8192 px ground is drawn in 256 px chunks around the camera (`GroundChunks`, a per-frame time budget), and obstacles, canopies and plants sit in 512 px buckets of which only those near the camera are visible (`BucketGrid`).
-- It renders about 100 ms in the past (`Mirror`, `INTERP_TICKS = 6`), interpolating between snapshots.
-- Projectiles are simulated on the client from their `shot` events, since they fly straight, and removed on `hit`/`impact` events.
+- It never runs the sim. It regenerates the terrain from the seed and the map settings.
+- The ground is drawn in 256 px chunks around the camera within a per-frame budget (`GroundChunks`). Obstacles, canopies and plants sit in 512 px buckets, and only those near the camera are visible (`BucketGrid`).
+- It renders about 100 ms in the past, interpolating between snapshots (`Mirror`, `INTERP_TICKS = 6`).
+- Projectiles are simulated from their `shot` events (they fly straight) and removed on `hit`/`impact`. Tower shots are `shot` events with `dinoId` = the structure id and `mount` = −1.
 
-**AI and players share one interface:** riders send an `InputCommand` (throttle, turn, aim point, fire). Wild dinos produce the same command from `computeWildCommand` in `src/sim/ai.ts`. Movement, eating and melee are shared systems.
+**AI and players share one interface:** riders send an `InputCommand` (throttle, turn, aim point, fire, ability). Wild dinos produce the same command from `computeWildCommand` (`ai.ts`). Movement, eating, melee and abilities are shared systems.
 
-**Prepared for client-side prediction, not built:** inputs carry a `seq`, and each snapshot carries `ack`, the last `seq` the server applied for that player.
+**Prepared, not built:** client-side prediction. Inputs carry `seq`, and snapshots carry `ack`.
+
+**Rule for new client-visible state:** add it to `GameState` (`src/sim/types.ts`), then to the encode/decode in `protocol.ts`, then to a round-trip test in `tests/net/protocol.test.ts`.
 
 ## Where things live
 | You want to… | Look at |
 |---|---|
-| Add or tune a species | `src/sim/defs/dinos.ts`, `src/sim/defs/weapons.ts`. Sprites go in `src/client/render/textures/` and are registered in `textures/index.ts` under the keys `<kind>_body_<palette>_<pose>`, `<kind>_shadow_<pose>`, `<kind>_head_<palette>`, where palette is `t0`..`t3` or `wild`. A species in `CHAINS` uses masks instead of `_shadow_` (see the next row). The `bodyAndHead` helper in `textures/index.ts` registers body, head and masks together. Also add the species to the `HERBIVORES`/`CARNIVORES` lists in `ecology.ts` and to `CARCASS_KINDS`/`drawCarcass` in `foodArt.ts` (`FoodView` falls back to Triceratops art). |
-| Give a species a bending tail or neck | Set `tail` (and `head`) offsets in `dinos.ts`. Define its links with `taperedChain` next to its art, add it to `CHAINS` in `src/client/render/chains.ts` (link textures and masks then register automatically), and leave the tail out of the body sprite. Tune the motion with `TRAIL_RATE`, `TAIL_SWAY`, `SWAY_WAVE`, `WHIP_*` in `DinoView.ts`. |
-| Give a species rider armor | Register `<kind>_armor_<palette>` (body overlay) and/or `<kind>_headArmor_<palette>` (head overlay) for `t0`..`t3` in `textures/index.ts`. `DinoView` shows them on ridden dinos whenever the textures exist. The Triceratops versions are in `dinoArt.ts`. Open `/?preview` (or `/?preview=velociraptor&zoom=3&focus=row,col`) to see every palette and heading. |
-| Give a species an ability | `ability` on the `DinoDef` (`kind: 'leap' \| 'dash' \| 'whip' \| 'bite'`). The logic is in `src/sim/systems/abilities.ts`, wild use in `wantsAbility`/`wantsWhip` (`ai.ts`), and the leap and whip rendering in `DinoView`. A new kind needs a branch in `updateAbility`. |
-| Fire all guns at once | `volley: true` on the `DinoDef` (used by both species' twin side guns). `fireMode: 'side'` (Brontosaurus) fires every mount whose arc holds the cursor (`selectSideMounts`). Without either, only the mounts that are on target fire (`selectFiringMounts`). |
-| Tune river currents | `RIVER_SPEED`, `RIVER_DEEP`, `RIVER_WIDE` and the flow computation in `waterLayer` (`worldgen.ts`). The lookups are `flowAt` and `isRiver` (`world.ts`). Per species: `currentSlow` and `currentDrift`, applied in `terrainSpeedFactor` and `applyCurrent` (`movement.ts`). Streak visuals: `drawStreak` in `WaterView.ts`. |
-| Tune water and terrain | `waterLayer`, `OBSTACLE_GAP` and `DEFAULT_TILES` in `src/sim/worldgen.ts`, and `wadeSpeed` per species. The terrain lookup is `tileAt` in `world.ts`. Water visuals: `WaterView.ts`, `waterArt.ts`, and the water colors in `drawGround` (`worldArt.ts`). |
-| Change the diet rule | `canEat` in `src/sim/systems/feeding.ts`. Food amounts and regrowth are in the `FOOD` table in the same file. |
-| Tune weapon aim limits | `MountDef` (`baseAngle`, `arcHalf`), `HeadDef.maxYaw`. The aim maths is in `systems/aiming.ts`. |
-| Tune wild population or behaviour | `src/sim/ecology.ts` (`wildTarget(players, area)`: `min(110, 28 + 5·players)` scaled by `min(2.5, area / 4096²)`, spawn rules), `src/sim/ai.ts` (`HUNT_RANGE`, `PROVOKED_TIME`, …) |
-| Tune the economy | `src/sim/upgrades.ts` (costs, effect per level, rider bounty), and `bounty` per species in `dinos.ts` |
-| Change teams, bases or respawn | `src/sim/players.ts` (`MAX_TEAMS`, `BASE_RADIUS` = `CAMP.radius`, `RESPAWN_TIME`, `TEAM_EMPTY_TIMEOUT`), random-map base positions in `worldgen.ts` (`baseSlots`), the spawn ring in `CAMP.spawnMin`/`spawnMax` |
-| Add or change a fixed map | `src/sim/maps/`: a `MapRecipe` (`types.ts`: camp and tower spots, lakes, rivers, fords, zones, symmetry, its own seed) like `crossing.ts`, registered in `MAPS` (`index.ts`). `worldOptionsFor(map, teams, tiles)` turns settings into `WorldGenOptions`; the server and the client both call it. `tests/sim/maps.test.ts` checks CROSSING (paths between camps, fords, symmetry). |
-| Tune camps and towers | `CAMP` and `TOWER_GUN` in `src/sim/camp.ts` (HP, radii, field threshold, rebuild time, healing, bounties, turret). Damage, the force field and tower AI: `src/sim/systems/structures.ts` (`damageStructure`, `structureHitBy`, `updateStructures`). Healing: `healInCamps` (`players.ts`). |
-| Change rounds | `src/sim/rounds.ts`: `COUNTDOWN`, `INTERMISSION`, `updateRound` (phases), `eliminateTeam`, `switchTeam`. Restarts and setup: `Match` (`startRound`, `nextRound`, the `join` branch of `handle`). Client: `JoinScene` (setup steps), `EliminatedPanel`, the banner in `hudModel.ts`. |
-| Change camp and tower art | `textures/campArt.ts` (`drawCamp`, `drawTowerBase`, `drawTowerTurret`, damage stages), `structureStages.ts` (HP → stage), `StructureViews.ts` (sprites, force field, smoke, fire, rebuild scaffold). Preview: `/?preview=camp`. |
-| Change how the ground is drawn | `GroundChunks.ts` (`CHUNK` 256 px, `FRAME_BUDGET_MS`, `KEEP`), `drawGroundChunk` in `worldArt.ts` (per-chunk seeds, `DETAIL_INSET`), and `BucketGrid.ts` for obstacle, canopy and plant culling (`WorldView`, `FoodView`). |
-| Add a message type | `src/net/protocol.ts` (types, plus validation in `parseClientMsg`), then `Match.handle`, then `NetClient.receive` |
-| Change HUD or UI | `src/client/render/Hud.ts`, `ShopPanel.ts`, `scenes/JoinScene.ts`. All text uses the 5x7 bitmap font in `textures/font.ts`: **uppercase only**, and any glyph you need must be defined there. |
-
-**Rule for new state:** a field that clients must see goes into `GameState` in `src/sim/types.ts`, then into the matching encode/decode in `protocol.ts`, then into a round-trip check in `tests/net/protocol.test.ts`.
+| Tune camps and towers | `CAMP` and `TOWER_GUN` in `src/sim/camp.ts`: HP, radii, field threshold, rebuild time, healing, bounties, turret, spawn ring. Damage, force field and tower AI: `systems/structures.ts` (`damageStructure`, `structureHitBy`, `updateStructures`). Healing: `healInCamps` (`players.ts`). |
+| Change rounds | `src/sim/rounds.ts`: `COUNTDOWN`, `INTERMISSION`, `updateRound`, `setPhase`, `eliminateTeam`, `switchTeam`. `TEAM_EMPTY_TIMEOUT` is in `players.ts`. Restarts and setup: `Match` (`startRound`, `nextRound`, the `join` branch of `handle`). Client: `JoinScene` (setup steps), `EliminatedPanel`, banners in `hudModel.ts`. |
+| Add or change a fixed map | `src/sim/maps/`: a `MapRecipe` (`types.ts`: camp and tower spots, lakes, rivers, fords, zones, symmetry, its own seed), like `crossing.ts`, registered in `MAPS` (`index.ts`). `worldOptionsFor(map, teams, tiles)` is called by both the server and the client. Tests: `tests/sim/maps.test.ts`. |
+| Tune the random map | `src/sim/worldgen.ts`: `DEFAULT_TILES` (512), `baseSlots`/`baseInset` (camp positions), `waterLayer` (`LAKE_*_SHARE`, `RIVER_SPEED`, `RIVER_DEEP`, `RIVER_WIDE`), `OBSTACLE_GAP`. The terrain lookup is `tileAt` (`world.ts`); use `isWater`/`isDeepWater`/`flowAt`/`isRiver` rather than indexing tiles. |
+| Add or tune a species | `src/sim/defs/dinos.ts`, `defs/weapons.ts`. Sprites go in `src/client/render/textures/`, registered in `textures/index.ts` (`<kind>_body_<palette>_<pose>`, `<kind>_head_<palette>`, palette `t0`..`t3` or `wild`). Also add it to `HERBIVORES`/`CARNIVORES` (`ecology.ts`) and `CARCASS_KINDS`/`drawCarcass` (`foodArt.ts`). The Brontosaurus and T-Rex are drawn at `BRONTO_SCALE`/`REX_SCALE`, and their sizes in `dinos.ts` use the same factor: **change them together**. |
+| Bending necks and tails | `src/client/render/chains.ts` (`CHAINS`, `taperedChain`). Motion: `TRAIL_RATE`, `TAIL_SWAY`, `SWAY_WAVE`, `WHIP_*` in `DinoView.ts`. Chained species have no `_shadow_` texture: their shadow is stamped from masks. The sim still uses one circle per dino. |
+| Rider armor | `<kind>_armor_<palette>` and `<kind>_headArmor_<palette>` in `textures/index.ts`; `DinoView` shows them on ridden dinos. |
+| Abilities | `ability` on the `DinoDef` (`leap`, `dash`, `whip`, `bite`), logic in `systems/abilities.ts`, wild use in `wantsAbility`/`wantsWhip` (`ai.ts`), rendering in `DinoView`. |
+| Firing rules | `volley: true` fires all mounts together; `fireMode: 'side'` (Brontosaurus) fires every mount whose arc holds the cursor (`selectSideMounts`); otherwise only on-target mounts fire. Aim limits: `MountDef`, `HeadDef.maxYaw`, `systems/aiming.ts`. |
+| Diets and food | `canEat` and the `FOOD` table in `systems/feeding.ts`; `CARCASS_DECAY_SECS`. |
+| Wild population and behaviour | `src/sim/ecology.ts`: `wildTarget(players, area)` = `min(110, 28 + 5·players) × min(2.5, area / 4096²)`, so up to 275. Also `src/sim/ai.ts` (`HUNT_RANGE`, `PROVOKED_TIME`, …). |
+| Economy | `src/sim/upgrades.ts`, and `bounty` per species. |
+| Teams, respawn, player cap | `src/sim/players.ts`: `MAX_TEAMS`, `MAX_PLAYERS` (23), `BASE_RADIUS` (= `CAMP.radius`), `RESPAWN_TIME`. |
+| Camp and tower art | `textures/campArt.ts` (`drawCamp`, `drawTowerBase`, `drawTowerTurret`), `structureStages.ts` (HP → damage stage), `StructureViews.ts` (sprites, force field, smoke, fire, rebuild scaffold). Preview: `/?preview=camp`. |
+| Ground drawing | `GroundChunks.ts` (`FRAME_BUDGET_MS`, `KEEP`), `drawGroundChunk` and `CHUNK` in `worldArt.ts` (per-chunk seeds, `DETAIL_INSET`), `BucketGrid.ts`. |
+| Water visuals | `WaterView.ts`, `waterArt.ts`. |
+| HUD and UI | `Hud.ts`, `hudModel.ts` (pure, unit-tested), `ShopPanel.ts`, `EliminatedPanel.ts`, `scenes/JoinScene.ts`. All text uses the 5×7 bitmap font in `textures/font.ts`: **uppercase only**, and every glyph you need must exist there. Write cooldowns as `IN 12`, because `12S` reads as `125`. |
+| A new message type | `src/net/protocol.ts` (types, and validation in `parseClientMsg`), then `Match.handle`, then `NetClient.receive`. |
 
 ## Run and verify
 ```
 npm install
 npm run dev          # server :8080 (tsx watch) + Vite :5173 (proxies /api and /ws); play at :5173
-npm test             # 183 tests, about 5 s (25 s or more under heavy load)
+npm test             # 186 tests, about 5 s (longer under load)
 npm run build        # tsc + vite (dist/) + esbuild server bundle (dist-server/server.cjs)
 docker compose up --build -d   # production, http://localhost:8080
 ```
-**Environment variables:** `PORT` (default 8080), `STATIC_DIR` (default `./dist`), `SEED` (world seed of the first RANDOM round; random otherwise), `TEAMS` (2–4) and `MAP` (`random` or a map id for that team count, e.g. `crossing`): either one presets and locks the round settings, so nobody sees the setup screen. `TEAMS=2 MAP=crossing` is the quickest setup for browser checks.
+**Environment variables:**
+- `PORT` (default 8080), `STATIC_DIR` (default `./dist`).
+- `SEED`: the world seed of the first RANDOM round (random if unset).
+- `TEAMS` (2–4) and `MAP` (`random` or a map id such as `crossing`): either one presets and locks the round settings, so nobody sees the setup screen. `TEAMS=2 MAP=crossing` is the quickest setup for browser checks.
 
-**Browser testing:**
-- Adding `?debug` to the URL exposes `window.dinoriders = { scene, net }`.
-- No browser driver is in the repo, and playwright is not installed. What worked in the latest session:
-  - **Static screenshots:** `msedge --headless=new --disable-gpu --window-size=1728,1080 --virtual-time-budget=8000 --user-data-dir=<tmp> --screenshot=<out.png> "http://localhost:5173/?preview"`. Edge is at `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`.
-  - **Edge sometimes writes no screenshot** when its stderr goes to `/dev/null`, or when the `--user-data-dir` is new or still in use. Pipe stderr instead (`2>&1 | tail -1`), use a fresh directory per run, and check that the file exists.
-  - **The screenshot file can appear a few seconds after the command returns.** Poll for it before deciding the run failed.
-  - **Headless Edge leaves processes behind.** `kill()` on the CDP-driven Edge only stops the parent. After many runs, dozens of leftover processes slowed the machine and dropped the in-game fps from about 45 to 13. Stop them by their `--user-data-dir` (`Get-CimInstance Win32_Process` filtered on the command line) after each run.
-  - **Driving the game:** a small Node script (not committed; it lived in the session scratchpad):
-    1. Start Edge with `--remote-debugging-port` and connect over CDP using the repo's `ws` package (`createRequire` on the repo's `package.json`).
-    2. Open `/?debug`, wait about 2.5 s, press `1` (found a team), then the mount key (`1` Triceratops, `2` Velociraptor, `3` Brontosaurus).
-    3. Replace `window.dinoriders.scene.playerInput.command` with an autopilot. Phase 7's autopilot looked for the nearest `Tile.Deep` in `scene.world.tiles`, drove there, then circled at throttle 0.6, firing to the left and using the ability.
-    4. Read your own dino from `[...scene.dinoViews.values()].map(v => v.lastView)` (speed, position), then call `Page.captureScreenshot`. The fps is in `scene.game.loop.actualFps`.
-    5. Headless fps is capped at 60, so measure CPU per frame instead. Note `performance.now()` on `scene.game.events` `'prestep'` and again on `'postrender'`. Replacing `game.step` doesn't work, because the loop holds a bound copy.
-  - Right after Vite starts, the first page load is slow, so `window.dinoriders` may not exist yet. Retry, or wait longer before pressing keys.
-  - OS mouse cursors never appear in screenshots. Check `document.querySelector('canvas').style.cursor` instead.
-  - Committing such a driver as `scripts/e2e/` would be a good next step.
+**Browser testing.** There is no browser driver in the repo (playwright isn't installed). What works on this machine:
+- **`?debug`** exposes `window.dinoriders = { scene, net }`. `/?preview` (and `?preview=<kind>`, `?preview=camp`, `&zoom=N&focus=row,col`) shows the art sheets.
+- **Screenshots:** `msedge --headless=new --disable-gpu --window-size=1728,1080 --virtual-time-budget=8000 --user-data-dir=<fresh tmp dir> --screenshot=<out.png> "<url>"`. Edge is at `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`.
+  - Pipe stderr (`2>&1 | tail -1`); with stderr sent to `/dev/null`, Edge sometimes writes nothing.
+  - Use a new `--user-data-dir` per run.
+  - The file can appear a few seconds after the command returns, so poll for it.
+- **Driving the game:** a small Node script, which has never been committed:
+  1. Start Edge with `--remote-debugging-port` and talk CDP over the repo's `ws` package (`createRequire` on the repo's `package.json`).
+  2. Open `/?debug` and wait until `window.dinoriders` exists. The first load after Vite starts is slow.
+  3. Press the team key, then the mount key.
+  4. Replace `scene.playerInput.command` with an autopilot. A round restart replaces `playerInput`, so re-install it after each `welcome`.
+  5. Read your dino from `[...scene.dinoViews.values()].map(v => v.lastView)` and enemy structures from `scene.net.mirror.structuresAt(...)`. Take shots with `Page.captureScreenshot`.
+- **Frame time:** headless fps is capped at 60, so measure CPU per frame instead: `performance.now()` on `scene.game.events` `'prestep'` and `'postrender'`. Replacing `game.step` doesn't work, because the loop holds a bound copy.
+- **Timing a round restart:** listen on `scene.net.ws` with `addEventListener('message')`. Page timers are blocked while the client rebuilds the world.
+- **Clean up:** headless Edge leaves processes behind. Kill them by their `--user-data-dir` (`Get-CimInstance Win32_Process`, filtered on the command line). Dozens of leftovers once dropped the in-game fps from about 45 to 13.
+- OS mouse cursors never appear in screenshots; check `document.querySelector('canvas').style.cursor` instead.
+- Committing a driver as `scripts/e2e/` would be a good next step. It only makes sense once a round can finish with the real HP values, or with a test-only override.
 
 ## Gotchas
-- **Windows path case and vitest:** running vitest from `c:\…` (lowercase drive letter) fails with "Cannot read properties of undefined (reading 'config')". Run it from `C:\…`.
-- **Docker port mapping on Windows:** right after a local dev server on :8080 is killed, Docker can start the container without publishing the port, and `docker compose ps` shows `8080/tcp` with no `0.0.0.0:`. Fix: `docker compose down`, wait a few seconds, then `up -d`.
-- **The user's Docker container usually holds :8080**, so `npm run dev` then fails with EADDRINUSE on the server side, and Vite silently proxies to the old container. For a dev check, leave the container alone and run `PORT=8091 npx tsx src/server/main.ts` together with `GAME_SERVER=http://localhost:8091 npx vite --port 5174`.
-- **No Python** on this machine. Use Node one-liners or the edit tools for scripted file edits.
-- **`tsx` without watch** (as started manually in a terminal) does not reload server code. `npm run dev` uses `tsx watch`. After a change to world generation, restart the server: the client regenerates the world from the seed with the *new* code, and a stale server would simulate a different map.
-- **Scripted edits from the agent's Bash tool:** heredocs and `node -e '…'` with nested quotes, backticks or `\|` broke several times, either failing with "unexpected EOF" or mangling the text. Write the edit script to a file with the Write tool and run `node file.cjs`, or use the Edit tool.
-- **World generation is client-side too:** `generateWorld` runs on both server and client, so it must stay deterministic and fast (about 30 ms; `drawGround` about 1.3 s at 3072 px).
-- **Unit tests run without wildlife:** `createMatch(seed, worldOpts, { wildlife })` defaults to no wild dinos so tests stay predictable. The server turns it on (`new Match(seed)`), and tests opt in with `{ wildlife: true }` or `new Match(seed, { wildlife: false })`.
-- **Object IDs:**
-  - Plants use IDs from 1 up.
-  - The first carcasses on the map use 900000 and up.
-  - Carcasses created during play use `CARCASS_ID_BASE + nextId` (1000000 and up).
-- **K/D** counts only rider-vs-rider kills. Killing a wild dino pays money but doesn't count as a kill.
+- **Naming:** the game is **Dino Pew Pew**. That name appears in the page title, the join screen, the server log, the README and `package.json` (`dino-pew-pew`). Some identifiers still use the old name on purpose: the local folder `Dinoriders`, the Docker Compose service and image `dinoriders` (the Caddy setup in `docs/TASK-https-deploy.md` proxies to `dinoriders:8080`), the VM clone at `~/dinoriders`, and the debug handle `window.dinoriders`. If you rename the Docker service, rename the deploy plan's references in the same change. The older specs and plans keep the old name as history. Comments about "Dino Riders box art" refer to the toy line the art is based on.
+- **vitest and the drive letter:** running vitest from `c:\…` (lowercase) fails with "Cannot read properties of undefined (reading 'config')". Run it from `C:\…`.
+- **The user's Docker container usually holds :8080**, so `npm run dev` fails with EADDRINUSE on the server, and Vite silently proxies to the old container. Leave the container alone and run `PORT=8090 npx tsx src/server/main.ts` together with `GAME_SERVER=http://localhost:8090 npx vite --port 5174`.
+- **Docker port mapping on Windows:** right after a local server on :8080 is killed, Docker can start the container without publishing the port (`docker compose ps` shows `8080/tcp` with no `0.0.0.0:`). Run `docker compose down`, wait a few seconds, then `up -d`.
+- **World generation runs on both server and client**, so it must stay deterministic for `(seed, options)`: only `state.rng` or the seeded noise, never `Math.random`, and no engine-sensitive maths such as `Math.hypot` (use `Math.sqrt(dx*dx + dy*dy)`). After changing world generation, restart a non-watch server, or it simulates a different map than the clients draw.
+- **`src/sim` must not import Phaser.**
+- **Tests use the small map:** `SMALL` (4096 px) from `tests/helpers.ts` keeps unit tests fast. Building the full 8192 px world takes about 0.3 s in Node, much longer under load; `testTimeout` and `hookTimeout` are 20 s.
+- **Server tests wait on conditions, never on fixed sleeps** (`until`, `tickUntil`, `waitFor` in `tests/server/match.test.ts`). Fixed 20–50 ms sleeps failed intermittently under CPU load.
+- **Unit tests run without wildlife:** `createMatch(seed, worldOpts, { wildlife })` defaults to none. `{ camps: false }` leaves camps out, for tests that put dinos where a camp building would stand.
+- **Ids:** dinos and structures share `state.nextId`. Plants use ids from 1 up, the initial carcasses 900000 and up, and later carcasses `CARCASS_ID_BASE + nextId` (1000000 and up). After compacting `state.dinos` in place, call `forgetDinoIndex`.
+- **`Mirror.dinosAt` returns reused objects**, one per dino id. Read them during the frame and don't keep them.
+- **K/D** counts only rider-vs-rider kills. Tower kills show in the feed as `<TEAM> TOWER > victim`.
+- **No Python** on this machine. For scripted edits, write a `.cjs` file and run it with `node`, or use the edit tools. Heredocs and `node -e` with nested quotes have mangled text before.
+- **No `gh` CLI.** PR #1 was opened through the GitHub REST API with the token from `git credential fill` (never print it). Alternatively, `winget install GitHub.cli`.
 
-## Known limitations and suggested next steps
-1. **Balance:** wild raptors are strong. In tests, riders crossing the map without shooting back died 2–3 times. Look at `HUNT_RANGE`, the raptor `melee` values and `wildTarget` before adding content.
-2. **No client-side prediction:** your own dino reacts one round trip late. That's fine on a LAN, sluggish above about 80 ms. The protocol already carries `seq`/`ack`.
-3. **No player names:** players get automatic names (`RIDER n`). The join screen has no text input.
-4. **Internet use** needs a TLS reverse proxy that forwards WebSocket upgrades. There are no accounts and no persistence: a server restart creates a new world.
-5. **No sound** at all.
-6. **No browser end-to-end test in `npm test`.** The protocol and `Match` are covered by tests, but rendering is only checked by hand and screenshots.
-7. **Omnivores** are supported by the rules but no omnivore species exists yet. A small herbivore exists only as a test definition.
-8. **Brontosaurus feeding reach:** the sim measures food distance from the body center, but the head is about 65 px ahead. A reach based on the neck would make eating look right (`canEat`/`feed` in `feeding.ts`, `geometry.ts`).
-9. **Only one fixed map, CROSSING (2 teams).** The recipe format (`MapRecipe`) supports 3- and 4-team maps; none are made yet, so 3 and 4 teams always play RANDOM.
-10. **No minimap on an 8192 px world.** Finding the enemy camps relies on the HUD strip and knowing the layout; a minimap (or edge arrows to camps) is the obvious next UI step.
-11. **Collision is one circle per dino.** The Brontosaurus's long neck and tail pass through rocks and other dinos, and its tail whip uses a reach around the body center.
-12. **Docker image is stale.** Rebuild with `docker compose up --build -d` (watch out for the Windows port-mapping gotcha above).
-13. **Untested by unit tests:** client rendering (water, chains, shadows, camps, force field, ground chunks) is only checked by screenshots. Pure HUD decisions (`hudModel.ts`, `structureStages.ts`) have unit tests.
+## Measurements (2026-10-05, this machine, after the camp siege)
+- **Client frame time** (headless Edge with software rendering, one rider driving for 90 s): CROSSING mean 3.0 ms (p99 5.9); RANDOM 8192 mean 3.3 ms (p99 10.4), at 60 fps. With two Edge instances plus Vite and the server on the same machine, there were single 130–190 ms spikes that were not traced. Drawing a ground chunk causes the p99 spikes.
+- **Round restart:** 15.6 s from the `over` snapshot to the next `welcome` (the intermission plus the world build). The client rebuilt the scene within 0.9 s.
+- **Server** (the real `Match` with 16 bots firing nonstop, wildlife on, 4 simulated minutes):
 
-## Capacity (measured 2026-10-05)
-The cap is `MAX_PLAYERS = 23` (`players.ts`, raised from 16 on 2026-10-05), with 4 teams. Measured with the simulation benchmark: bots on 4 teams, all driving and firing nonstop, 4 simulated minutes.
+  | Setup | Dinos alive | Tick mean / p99 | Snapshot compressed mean / max |
+  |---|---|---|---|
+  | 2 teams, CROSSING | 89 | 1.17 / 3.0 ms | 2.9 / 4.1 KB |
+  | 4 teams, RANDOM 8192 | 91 | 1.25 / 3.1 ms | 3.2 / 4.4 KB |
+  | 2 teams, CROSSING, wildlife at its target | 168 | 1.06 / 2.3 ms | 5.3 / 8.1 KB |
+  | 4 teams, RANDOM 8192, wildlife at its target | 165 | 1.20 / 2.6 ms | 5.5 / 8.1 KB |
 
-| Players | Dinos alive | Bullets in flight | Tick (budget 16.7 ms) | Snapshot, compressed | Server upload |
-|---|---|---|---|---|---|
-| 16 | 89 | 53 | 1.7 ms | 2.4 KB | ~6 Mbit/s |
-| 32 | 109 | 113 | 2.2 ms | 3.1 KB | ~16 Mbit/s |
-| 64 | 132 | 235 | 2.3 ms | 3.5 KB | ~36 Mbit/s |
-| 100 | 160 | 399 | 3.1 ms | 4.3 KB | ~69 Mbit/s |
-
-- **Server CPU is not the limit.** Compression costs about 0.4 ms per player per snapshot, and `ws` runs it on Node's worker pool, off the main thread.
-- **Upload bandwidth is the limit,** because every player gets every dino. A home connection supports roughly 16–30 players; a hosted server supports 64 or more. Each player needs about 0.5–0.7 Mbit/s down.
-- **Next come the gameplay limits:** 4 teams and one 8192 px map per round. Also, the client draws every bullet on the map, including off-screen ones.
-- The table above predates the camp siege (4096 px map). Re-measured after it: see [Latest session: camp siege](#latest-session-camp-siege).
-- **Raising the cap to 32** is safe on the server and protocol side. Test with real players first. For 50 or more, add per-player area-of-interest culling (see the backlog).
+- **Capacity:** server CPU is not the limit (a tick is about 1–2 ms of its 16.7 ms budget). Upload bandwidth is, because every player gets every dino. Before the siege, 16 players needed about 6 Mbit/s of upload; now that the wild population can reach 275, snapshots are about twice as large. A home connection carries roughly 16 players; a hosted server many more. Raising `MAX_PLAYERS` past 23 is safe on the server side, but test with real players first. For 50 or more, add area-of-interest culling.
 - **Not tested:** more than 2 real browsers on separate machines, over a real network.
 
-## Performance backlog
-These were found in the performance review of 2026-10-05 but not done. They are roughly in order of payoff within each group, and line numbers are from that date.
+## Known limitations
+1. **No client-side prediction:** your own dino reacts one round trip late. That's fine on a LAN and sluggish above about 80 ms.
+2. **No player names:** players get `RIDER n`. The join screen has no text input.
+3. **Internet use** needs TLS in front of the server (see `docs/TASK-https-deploy.md`). There are no accounts and no persistence: a restart creates a new world.
+4. **No sound.**
+5. **Only one fixed map, CROSSING (2 teams).** The recipe format supports 3- and 4-team maps, but none exist yet, so 3 and 4 teams always play RANDOM.
+6. **No minimap** on the 8192 px world. Edge arrows point to enemy camps, and the HUD strip shows camp status.
+7. **No browser end-to-end test in `npm test`.** Rendering is only checked by screenshots. The pure HUD logic (`hudModel.ts`, `structureStages.ts`) has unit tests.
+8. **One collision circle per dino:** the Brontosaurus's neck and tail pass through rocks and other dinos. Its feeding reach is also measured from the body centre, about 65 px behind its head.
+9. **Omnivores** are supported by the rules, but no omnivore species exists.
+10. **Small UI rough edges:**
+    - the force-field dome is faint on grass;
+    - "YOUR CAMP HAS FALLEN" shows through the semi-transparent eliminated panel;
+    - the spectator hint says `1-4 TO JOIN` even with 2 or 3 teams;
+    - the rebuild scaffold draws above nearby dinos.
 
-**Simulation:**
-- ~~Food grid~~ **done** (2026-10-05): `foodNear` in `spatial.ts` is a grid over `state.food`, rebuilt only when the array or its length changes (food never moves). `nearestFood` (`ai.ts`) and `findFood` (`feeding.ts`) use it and break distance ties by the lower index, so results match the old full scan exactly (same state hash after 90 s with wildlife). Tick with 16 idle players and 65 wild dinos: 0.25 ms → 0.21 ms.
-- `clearHeading` (`ai.ts`): hoist the `[16, 32]` and `[24, 48]` arrays, cache the chosen heading for a few ticks, and use a per-tile "wet" bitmap instead of noise lookups per probe.
-- Look up `tileIndexAt` once per dino per tick: `terrainSpeedFactor` and `applyCurrent` (`movement.ts`) call it 2–3 times. Have `flowAt` return through out-parameters instead of a new object.
-- Ability hit scans (`abilities.ts`: ram, whip, bite, land): use `dinosNear`, test distance first, and make `abilityHit` a Set.
-- Smaller per-tick allocations: `updateAim` builds an `errors` array; volley species `map` their mounts every tick (`sim.ts`); `updatePlayers` runs `players.some` per team.
-- `isInOwnBase` and `findTeam` run a linear team lookup before the distance test in several places.
+## Performance backlog
+Roughly in order of payoff within each group.
 
 **Network:**
-- Area-of-interest culling: send each client only the dinos near its camera. Today every client gets every dino.
-- Send `kind` and `team` as small integers (a table in `welcome`), and send `maxHp` only when a dino first appears.
-- Quantize events: shot events carry full-precision floats and a `team` that could be derived from `dinoId`.
-- Clients send input at 60 Hz even when it hasn't changed. Send it on change, plus a ~10 Hz keepalive.
+- **Area-of-interest culling:** send each client only the dinos near its camera. This matters more now that wildlife can reach 275.
+- Send `kind` and `team` as small integers (a table in `welcome`), and `maxHp` only when a dino first appears.
+- Quantize event floats, and drop the `team` field from shot events (it can be derived).
+- Send input only when it changes, plus a ~10 Hz keepalive, instead of 60 Hz.
 
 **Client, per frame:**
-- Depth sorting: Phaser re-sorts the whole display list (about 4700 objects) whenever any depth changes. Put static and flat objects (ground, water, shadows, decals, HUD) in their own Layers, and call `setDepth` only when the value changes.
+- Draw ground chunks in a worker or an `OffscreenCanvas`, to remove the p99 spikes. Chunks are also redrawn after every round restart.
+- Depth sorting: Phaser re-sorts the whole display list whenever any depth changes. Put static and flat objects in their own Layers, and call `setDepth` only on change.
 - `WaterView`:
-  - Precompute each wave point's texture key, speed and rotation, and the length of each river streak, instead of calling `isWet` per streak per frame.
-  - Pool fish images.
-  - Pre-filter dinos and ripples before the fish loop (it is O(fish × dinos)).
-- `wadingOf` runs twice per dino per frame (`GameScene.syncDinoViews` and `WaterView`). Compute it once and pass it along.
-- `ArcIndicator` and the base rings in `WorldView` are Graphics redrawn every frame. Turn the static rings and dotted rims into textures.
-- Pool projectile sprites, muzzle flashes, feed bits and float texts. Skip effects outside the camera.
-- `Mirror.takeEvents` and `projectilesAt` allocate every frame. Return early when nothing is due, and reuse the output objects.
-- Pool `DinoView`s by kind and palette instead of creating and destroying them as wild dinos come and go.
+  - precompute wave keys and speeds, and streak lengths;
+  - pool fish images;
+  - pre-filter dinos before the fish loop.
+- Compute `wadingOf` once per dino per frame (it runs twice today).
+- Pool projectile sprites, effects and `DinoView`s, and skip off-screen effects.
+- Avoid per-frame allocations in `Mirror.takeEvents`/`projectilesAt`, `StructureViews` and `GroundChunks`.
+- `ArcIndicator` and the camp rings are Graphics redrawn every frame; turn the static parts into textures.
 
-**Client, at join and boot:**
-- ~~`drawGround` builds the whole ground texture on every join~~ **done** in the camp siege: the ground is drawn in 256 px chunks around the camera (`GroundChunks`). Chunks are still redrawn after every round restart and rejoin, and drawing one costs the p99 frame spikes (see the camp siege measurements); a worker or an `OffscreenCanvas` would remove them.
-- The `WaterView` constructor scans the whole map on a 11 px grid. Skip tiles with no water.
-- `generateTextures`: build mask strips from the already rotated strips instead of rotating the masks again, and skip `rider_wild`, which is never used.
+**Simulation:**
+- `clearHeading` (`ai.ts`): hoist its probe arrays, cache the heading for a few ticks, and use a per-tile "wet" bitmap.
+- Look up `tileIndexAt` once per dino per tick (`movement.ts`), and have `flowAt` return through out-parameters.
+- Ability hit scans: use `dinosNear`, and make `abilityHit` a Set.
 
-**Scaling past one match:** run one match per `worker_thread` or process, and build and compress snapshots off the tick thread. A rewrite in another language (Go was asked about) would not help one match much: a tick is about 2 ms of its 16.7 ms budget. It would also mean keeping a second copy of `src/sim`, which the client also uses for world generation and terrain lookups.
+**Boot:** the `WaterView` constructor scans the whole map on an 11 px grid; skip tiles with no water. `generateTextures` re-rotates masks it could take from the already-rotated strips.
+
+**Scaling past one match:** run one match per `worker_thread` or process. A rewrite in another language would not help one match much, and it would mean keeping a second copy of `src/sim`, which the client also uses.
