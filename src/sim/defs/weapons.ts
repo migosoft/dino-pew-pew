@@ -28,7 +28,7 @@ const WEAPONS: Record<string, WeaponDef> = {
     id: 'broadsideGun',
     fireInterval: 0.35,
     projectileSpeed: 260,
-    damage: 6,
+    damage: 8,
     spread: 0.04,
     range: 260,
     projectileKind: 'bolt',
