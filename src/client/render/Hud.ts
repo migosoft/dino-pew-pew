@@ -30,7 +30,11 @@ const ENEMY_ARROW_RANGE = 650;
 const FEED_LINES = 5;
 const FEED_SECONDS = 6;
 const STRIP_Y = 16;
-const STRIP_CELL = 66;
+// 4 cells = 224 px: clear of the stats block (x < ~120) on the left at the 480 px canvas.
+const STRIP_CELL = 56;
+/** The feed starts below the strip (y 16-33). */
+const FEED_Y = 38;
+const LOW_HP_COLOR = 0xff9a30;
 const STRIP_BAR = 40;
 const FIELD_COLOR = 0x9fd8ff;
 
@@ -160,7 +164,7 @@ export class Hud {
     });
     this.feed.forEach((f, i) => {
       const age = (now - f.born) / 1000;
-      f.text.setPosition(cam.width - 6, 6 + i * 10).setAlpha(Math.min(1, (FEED_SECONDS - age) * 1.5));
+      f.text.setPosition(cam.width - 6, FEED_Y + i * 10).setAlpha(Math.min(1, (FEED_SECONDS - age) * 1.5));
     });
 
     this.worldOverlay(m);
@@ -181,17 +185,18 @@ export class Hud {
       const color = teamColor(c.team, m.teams);
       cell.name.setText(c.name).setTint(color).setAlpha(a).setPosition(x, STRIP_Y).setVisible(true);
       cell.out.setPosition(x, STRIP_Y + 9).setAlpha(a).setVisible(c.eliminated);
-      if (!c.eliminated) {
-        g.fillStyle(0x17110d, 1).fillRect(x, STRIP_Y + 9, STRIP_BAR, 3);
-        g.fillStyle(c.hpFrac < 0.3 ? 0xe0503c : color, 1).fillRect(x, STRIP_Y + 9, Math.round(STRIP_BAR * c.hpFrac), 3);
-      }
+      if (c.eliminated) return;
+      const low = c.hpFrac < 0.3;
+      g.fillStyle(0x17110d, 1).fillRect(x, STRIP_Y + 9, STRIP_BAR, 3);
+      // Low camp HP: orange (the red team is red already) and pulsing.
+      g.fillStyle(low ? LOW_HP_COLOR : color, low ? 0.6 + 0.4 * Math.sin(this.scene.time.now / 120) ** 2 : 1).fillRect(x, STRIP_Y + 9, Math.round(STRIP_BAR * c.hpFrac), 3);
       c.towers.forEach((up, k) => {
         const px = x + k * 5;
         const py = STRIP_Y + 14;
         if (up) g.fillStyle(color, a).fillRect(px, py, 3, 3);
         else g.lineStyle(1, color, a).strokeRect(px + 0.5, py + 0.5, 2, 2);
       });
-      if (c.field && !c.eliminated) g.fillStyle(FIELD_COLOR, 1).fillRect(x + c.towers.length * 5 + 1, STRIP_Y + 15, 2, 2);
+      if (c.field) g.fillStyle(FIELD_COLOR, 1).fillRect(x + c.towers.length * 5 + 1, STRIP_Y + 15, 2, 2);
     });
     for (let i = cells.length; i < this.strip.length; i++) {
       this.strip[i].name.setVisible(false);

@@ -31,7 +31,7 @@ export function campStatus(structures: StructureInfo[], teams: TeamInfo[]): Camp
         slot: t.slot,
         name: t.name,
         eliminated: t.eliminated,
-        hpFrac: camp && camp.maxHp > 0 ? Math.max(0, camp.hp / camp.maxHp) : 0,
+        hpFrac: camp && camp.maxHp > 0 ? Math.min(1, Math.max(0, camp.hp / camp.maxHp)) : 0,
         towers: Array.from({ length: CAMP.towers }, (_, i) => (towers[i]?.hp ?? 0) > 0),
         field: !!camp && camp.field,
       };

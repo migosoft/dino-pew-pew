@@ -87,3 +87,9 @@ describe('feed lines', () => {
     expect(ev({ type: 'phase', phase: 'over' })).toBeNull();
   });
 });
+
+describe('camp status clamp', () => {
+  it('keeps the hp fraction within 0..1', () => {
+    expect(campStatus([st('a', 'camp', 5000)], teams)[1].hpFrac).toBe(1);
+  });
+});
