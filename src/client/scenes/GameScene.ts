@@ -100,7 +100,7 @@ export class GameScene extends Phaser.Scene {
     this.world = generateWorld(w.seed, worldOptionsFor(w.map, w.teams, w.tiles));
     this.worldView = new WorldView(this, this.world);
     this.waterView = new WaterView(this, this.world);
-    this.foodView = new FoodView(this, this.world.food);
+    this.foodView = new FoodView(this, this.world.food, this.world.width, this.world.height);
     this.projectileView = new ProjectileView(this);
     this.fx = new Effects(this);
     this.arc = new ArcIndicator(this);
@@ -170,7 +170,6 @@ export class GameScene extends Phaser.Scene {
     const myDino = dinos.find((d) => d.playerId === me);
     this.projectileView.update(mirror.projectilesAt(rt), meInfo?.team);
     this.worldView.updateBases(teams);
-    this.worldView.update(myDino);
     this.arc.update(myDino, this.playerInput.aimWorld());
     const myBase = teams.find((t) => t.id === meInfo?.team)?.base;
     this.eliminated.update(meInfo, teams, mirror.round());
@@ -185,6 +184,9 @@ export class GameScene extends Phaser.Scene {
       this.spectate = null;
       this.followCamera(myDino ?? myBase);
     }
+    // After followCamera, so the view is current.
+    this.worldView.update(myDino, this.cameras.main.worldView);
+    this.foodView.cull(this.cameras.main.worldView);
 
     const cam = this.cameras.main;
     const ptr = this.input.activePointer;
