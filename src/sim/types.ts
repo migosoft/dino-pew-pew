@@ -306,6 +306,8 @@ export interface World {
   gridRows: number;
   /** Team base camp centers, one per possible team slot (kept clear of obstacles). */
   bases: Vec2[];
+  /** Tower positions per team slot (5 each) on a fixed map; null on random maps. */
+  towers: Vec2[][] | null;
   /** Initial food sources (plants + a few old carcasses); the match copies these into state.food. */
   food: FoodSource[];
 }
