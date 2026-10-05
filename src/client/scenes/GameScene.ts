@@ -240,7 +240,7 @@ export class GameScene extends Phaser.Scene {
         this.fx.muzzle(e.x, e.y);
         break;
       case 'structureHit':
-        if (e.shielded) this.structures.shieldHit(e.x, e.y, e.structureId);
+        if (e.shielded) this.structures.shieldHit(e.x, e.y, e.structureId, structures, teams);
         else this.fx.hit(e.x, e.y);
         break;
       case 'towerDown': {

@@ -37,7 +37,6 @@ const PIP = 0xffe066;
 export class StructureViews {
   private entries = new Map<number, Entry>();
   private overlay: Phaser.GameObjects.Graphics;
-  private teams: TeamInfo[] = [];
   private structures = new Map<number, StructureInfo>();
 
   constructor(private scene: Phaser.Scene, private fx: Effects) {
@@ -45,7 +44,6 @@ export class StructureViews {
   }
 
   update(list: StructureInfo[], teams: TeamInfo[], now: number, view: Phaser.Geom.Rectangle): void {
-    this.teams = teams;
     this.structures = new Map(list.map((s) => [s.id, s]));
     this.overlay.clear();
     const near = new Phaser.Geom.Rectangle(view.x - FX_MARGIN, view.y - FX_MARGIN, view.width + FX_MARGIN * 2, view.height + FX_MARGIN * 2);
@@ -64,7 +62,9 @@ export class StructureViews {
         e.stage = stage;
       } else if (e.base.texture.key !== baseKey) e.base.setTexture(baseKey);
 
+      // The hit flash wins; otherwise a cracked camp crystal flickers as a slow tint on/off.
       if (s.hitFlash) e.base.setTintFill(0xffffff);
+      else if (s.kind === 'camp' && stage === 4 && Math.floor(now / 250) % 2 === 0) e.base.setTint(0xffd8c8);
       else e.base.clearTint();
 
       const onScreen = near.contains(s.x, s.y);
@@ -101,13 +101,18 @@ export class StructureViews {
         field.setVisible(true).setScale(0.6);
         this.scene.tweens.add({ targets: field, scale: 1, duration: 400 });
       } else {
-        this.scene.tweens.add({ targets: field, scale: 1.15, alpha: 0, duration: 300, onComplete: () => field.setVisible(false) });
+        // Shrink, then a quick pop as it vanishes.
+        this.scene.tweens.add({
+          targets: field,
+          scale: 0.7,
+          duration: 220,
+          onComplete: () => {
+            this.scene.tweens.add({ targets: field, scale: 1.1, alpha: 0, duration: 80, onComplete: () => field.setVisible(false) });
+          },
+        });
       }
     }
     if (e.fieldOn) field.setAlpha(0.55 + 0.15 * Math.sin(now / 400));
-    // The cracked crystal flickers on a slow timer.
-    if (stage === 4) e.base.setAlpha(Math.floor(now / 250) % 2 === 0 ? 1 : 0.8);
-    else e.base.setAlpha(1);
 
     if (!onScreen || stage < 2 || now < e.nextFx) return;
     if (stage === 5) {
@@ -149,10 +154,10 @@ export class StructureViews {
   }
 
   /** A ripple where the force field blocked a hit. */
-  shieldHit(x: number, y: number, structureId: number): void {
-    const team = this.structures.get(structureId)?.team;
+  shieldHit(x: number, y: number, structureId: number, structures: StructureInfo[], teams: TeamInfo[]): void {
+    const team = structures.find((s) => s.id === structureId)?.team;
     const ring = this.scene.add.image(Math.round(x), Math.round(y), 'fieldRing').setDepth(DEPTH.fx);
-    if (team) ring.setTint(teamColor(team, this.teams));
+    if (team) ring.setTint(teamColor(team, teams));
     this.scene.tweens.add({ targets: ring, scale: 3, alpha: 0, duration: 350, onComplete: () => ring.destroy() });
   }
 
